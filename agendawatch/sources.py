@@ -2,9 +2,9 @@
 
 Each source returns Document objects; the runner downloads and searches them.
 
-  legistar   Granicus Legistar (Dallas, Carrollton, Farmers Branch, University Park).
+  legistar   Granicus Legistar (Dallas, Plano, Carrollton, Farmers Branch, University Park).
              Uses the public Legistar Web API; falls back to the website calendar.
-  novus      NovusAGENDA (Plano).
+  novus      NovusAGENDA (no city uses it now; Plano left it in July 2026).
   link_page  Any page that links to agendas (Addison, Richardson's Swagit archive).
   doc_table  A page with one table row per meeting and a column per document
              (Richardson's "Council Meeting Documents" page on cor.net).

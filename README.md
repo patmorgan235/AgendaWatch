@@ -8,7 +8,7 @@ Checks seven North Texas city agenda sites every day, searches each agenda for y
 | Farmers Branch | Legistar (`farmersbranch`) | same |
 | Carrollton | Legistar (`carrolltontx`) | same |
 | University Park | Legistar (`uptexas`) | same |
-| Plano | NovusAGENDA | meeting list → agenda PDFs |
+| Plano | Legistar (`plano`) | same (moved from NovusAGENDA in July 2026) |
 | Richardson | cor.net Council Meeting Documents | agenda + packet PDFs, posted ~6 days ahead (Swagit video archive kept in config, disabled) |
 | Addison | Addison agenda portal | meeting pages → agenda packet PDFs |
 

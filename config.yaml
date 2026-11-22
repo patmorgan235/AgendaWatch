@@ -54,8 +54,8 @@ sources:
     client: farmersbranch
 
   - name: Plano
-    type: novus
-    base_url: https://plano.novusagenda.com/agendapublic
+    type: legistar
+    client: plano           # moved from NovusAGENDA to Legistar in July 2026
 
   - name: Richardson
     type: doc_table
