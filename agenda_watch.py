@@ -30,6 +30,7 @@ def load_config(path: str) -> dict:
     p = Path(path)
     if not p.is_absolute() and not p.exists():
         p = HERE / p
+    p = p.resolve()
     with open(p, encoding="utf-8") as fh:
         cfg = yaml.safe_load(fh)
     settings = cfg.setdefault("settings", {})
@@ -48,7 +49,7 @@ def cmd_run(args, cfg) -> int:
     print(text_summary(res))
     print(f"\nReport: {path}")
     if args.open:
-        webbrowser.open(path.as_uri())
+        webbrowser.open(Path(path).resolve().as_uri())
     return 0 if not any(s.error for s in res.statuses) else 2
 
 
