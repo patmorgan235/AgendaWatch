@@ -129,7 +129,7 @@ so it came first.
 
 ### Phase 2 — Packaging ✅ done Nov 22, 2026
 
-- [x] `Dockerfile` (python:3.12-slim, non-root user, optional `ocrmypdf` with `--build-arg WITH_OCR=true`), about 200 MB. The default command is `job`.
+- [x] `Dockerfile` (python:3.12-slim, non-root user, `ocrmypdf` for scanned PDFs on by default since Phase 3; `--build-arg WITH_OCR=false` for a 200 MB image without it). The default command is `job`.
 - [x] Storage interface (`agendawatch/storage.py`) with `local`, `azure` (Blob, managed identity) and `s3` (any S3-compatible) backends, selected by `AGENDAWATCH_STORAGE`.
 - [x] Run lock: an Azure blob lease, an S3 conditional put, or a local exclusive file. A lock older than `AGENDAWATCH_LOCK_TTL_HOURS` (default 4) is taken over.
 - [x] Every `settings:` value can be overridden with `AGENDAWATCH_SETTING_<NAME>`; the config path with `AGENDAWATCH_CONFIG`.
@@ -148,18 +148,36 @@ so it came first.
 - Feed links use `site_url`.
 - The Azure and S3 backends are tested only against fake clients so far. The Azure backend gets its first real test in Phase 3.
 
-### Phase 3 — Azure deployment
+### Phase 3 — Azure deployment ✅ deployed Nov 22, 2026
 
-- [ ] **Bicep templates:**
-  - a storage account with the static website enabled and a private `state` container;
-  - a Container Apps environment and a scheduled job;
-  - a user-assigned managed identity with only the storage roles it needs;
-  - Log Analytics.
-- [ ] GitHub Actions: build and push the image on push to `main`; deploy the infrastructure manually or on tag.
-- [ ] Optional: a custom domain through Front Door or a CDN.
-- [ ] A short runbook: how to trigger a run, read the logs, and roll back the image.
+- [x] Bicep templates (`infra/main.bicep`):
+  - a storage account with the static website and a private `state` container (14-day soft delete);
+  - a Container Registry (Basic);
+  - Log Analytics;
+  - a Container Apps environment and the scheduled job (daily at 11:00 UTC, 2 vCPU / 4 GiB, 2-hour timeout);
+  - a job identity (storage read/write, image pull) and a deploy identity (image push, job update) with a GitHub OIDC federated credential;
+  - an email alert when there has been no successful run in 26 hours.
+- [x] `infra/deploy.sh` (registers providers, deploys, keeps the job's current image, turns on the static website) and `infra/push-image.sh` (local build and push).
+- [x] GitHub Actions (`.github/workflows/deploy.yml`): tests on every push and pull request; on `main`, builds, pushes and updates the job. The repo variables are set.
+- [x] Runbook: `docs/runbook.md`.
+- [ ] Optional: a custom domain through Front Door or a CDN (not started).
 
-**Done when:** the daily job runs unattended, the site updates, and a deliberately broken run raises an alert.
+**Deployed:** Pay-As-You-Go subscription, resource group `rg-agendawatch`, South Central US.
+- Site: https://agendawatchbcfoiznunxe4.z21.web.core.windows.net/
+- Registry: `agendawatchacrbcfoiznunx`
+- Job: `agendawatch-daily`
+
+**First hosted run (Nov 22):**
+- Succeeded in 12 minutes: 41 of 43 sources OK, 42 new matches, an 11.8 MB database.
+- Only cor.net (Richardson) and Hurst failed, with HTTP 403, as Phase 0 predicted.
+- The Richardson Swagit fallback works from Azure.
+- The site serves all files with the right content types.
+
+**Found and fixed after the first run:**
+- The container ran on UTC, so the "updated" time showed 10:06 PM for a 4:06 PM run. The image now sets `TZ=America/Chicago`.
+- `Microsoft.App` wasn't registered on the subscription; `deploy.sh` now registers missing providers.
+
+- The image had no OCR, so scanned agendas weren't read. OCR (`ocrmypdf`) is now built in by default; the image grows from 197 MB to 446 MB. Tested on Richardson's scanned Bicycle and Pedestrian Advisory Committee agenda: 0 → 2,573 characters, in 3 seconds. Agendas already read without OCR are only re-read if their file changes.
 
 ### Phase 4 — Operations and reliability
 

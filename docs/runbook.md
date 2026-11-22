@@ -7,11 +7,11 @@ why it's built this way.
 
 | Piece | Azure resource (resource group `rg-agendawatch`) |
 |---|---|
-| Daily run | Container Apps job `agendawatch-daily`, scheduled `0 11 * * *` UTC (5 AM CST / 6 AM CDT) |
-| Public site | Storage account static website (`$web` container); URL printed by `infra/deploy.sh` |
+| Daily run | Container Apps job `agendawatch-daily`, scheduled `0 11 * * *` UTC (5 AM CST / 6 AM CDT); the container runs on Central time (`TZ=America/Chicago`) |
+| Public site | Storage account `agendawatchbcfoiznunxe4`, static website (`$web` container): https://agendawatchbcfoiznunxe4.z21.web.core.windows.net/ |
 | Database | `state/agenda_watch.db` in the same storage account (private), with 14-day soft delete |
 | Run lock | `state/run.lock` (blob lease) |
-| Image | Azure Container Registry `<prefix>acr…`, repository `agendawatch` |
+| Image | Azure Container Registry `agendawatchacrbcfoiznunx`, repository `agendawatch` |
 | Logs | Log Analytics workspace `agendawatch-logs`, table `ContainerAppConsoleLogs_CL` |
 | Alert | "Agenda Watch: no successful run in 26 hours" (email), if `ALERT_EMAIL` was set |
 

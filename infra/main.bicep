@@ -219,6 +219,7 @@ resource job 'Microsoft.App/jobs@2024-03-01' = {
             { name: 'AGENDAWATCH_SETTING_SITE_URL', value: effectiveSiteUrl }
             { name: 'AGENDAWATCH_SETTING_PAGE_RETENTION_DAYS', value: string(pageRetentionDays) }
             { name: 'AGENDAWATCH_LOG_FORMAT', value: 'json' }
+            { name: 'TZ', value: 'America/Chicago' }   // report timestamps are local (Central) time
           ]
         }
       ]

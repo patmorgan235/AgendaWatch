@@ -166,7 +166,7 @@ The computer must be on at that time. Open `reports/index.html` (bookmark it) wh
 `python agenda_watch.py job` is the hosted version of `run`: it takes a run lock, downloads the database from storage, runs, saves the database, publishes the site files, and releases the lock. The `Dockerfile` builds an image whose default command is `job`.
 
 ```bash
-podman build -t agendawatch .                        # or docker; add --build-arg WITH_OCR=true for scanned PDFs
+podman build -t agendawatch .                        # or docker; OCR for scanned PDFs is built in (--build-arg WITH_OCR=false to leave it out)
 podman run --rm -v ./hosted:/data -e AGENDAWATCH_LOCAL_DIR=/data agendawatch
 ```
 
