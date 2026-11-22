@@ -1,6 +1,6 @@
 # agenda-watch
 
-Checks seven North Texas city agenda sites every day, searches each agenda for your key terms, and writes a report of new mentions.
+Checks nine North Texas city agenda sites every day, searches each agenda for your key terms, and writes a report of new mentions.
 
 | City | Platform | How it's read |
 |---|---|---|
@@ -11,6 +11,8 @@ Checks seven North Texas city agenda sites every day, searches each agenda for y
 | Plano | Legistar (`plano`) | same (moved from NovusAGENDA in July 2026) |
 | Richardson | cor.net Council Meeting Documents | agenda + packet PDFs, posted ~6 days ahead (Swagit video archive kept in config, disabled) |
 | Addison | Addison agenda portal | meeting pages → agenda packet PDFs |
+| Rowlett | CivicClerk (`rowletttx`) | CivicClerk API → agenda + packet PDFs |
+| Garland | CivicClerk (`garlandtx`) | same |
 
 Terms: DART, Dallas Area Rapid Transit, Transit, GMP, General Mobility Program, Streetcar.
 
@@ -86,7 +88,7 @@ Everything is in `config.yaml`.
 - **Fewer Dallas meetings:** Dallas posts agendas for dozens of boards. Uncomment the `bodies:` line to keep only the ones you care about.
 - **Deeper Legistar search:** `attachments: names` also searches agenda item titles and attachment names; `download` also downloads and searches attachments (slower).
 - **A page with one row per meeting:** use `type: doc_table` and list which columns to read in `columns` (see Richardson).
-- **Another city:** if it's on Legistar, copy a Legistar block and change `client` to the name before `.legistar.com`. For other sites, use `type: link_page` with the page that lists agendas and a `link_pattern` matching the agenda links.
+- **Another city:** if its agendas are at `<name>.portal.civicclerk.com`, copy the Rowlett block and change `tenant`. If it's on Legistar, copy a Legistar block and change `client` to the name before `.legistar.com`. For other sites, use `type: link_page` with the page that lists agendas and a `link_pattern` matching the agenda links.
 
 ## Scanned PDFs
 
@@ -104,7 +106,7 @@ Some packets are scanned images with no text. The report notes these under Sourc
 ```
 agenda_watch.py          command line (run / check / search)
 config.yaml              terms, cities, settings
-agendawatch/sources.py   Legistar, NovusAGENDA, link-page and document-table adapters
+agendawatch/sources.py   Legistar, CivicClerk, NovusAGENDA, link-page and document-table adapters
 agendawatch/extract.py   PDF/HTML → per-page text (OCR when needed)
 agendawatch/matcher.py   term matching, false-positive filters, snippets
 agendawatch/store.py     SQLite: agendas read, page text, matches already reported

@@ -6,6 +6,7 @@ Each source returns Document objects; the runner downloads and searches them.
              Uses the public Legistar Web API; falls back to the website calendar.
   novus      NovusAGENDA (no city uses it now; Plano left it in July 2026).
   link_page  Any page that links to agendas (Addison, Richardson's Swagit archive).
+  civicclerk CivicClerk (Rowlett, Garland). Uses the portal's public OData API.
   doc_table  A page with one table row per meeting and a column per document
              (Richardson's "Council Meeting Documents" page on cor.net).
 """
@@ -293,6 +294,62 @@ class LinkPageSource(Source):
         return docs
 
 
+# ---------------------------------------------------------------- CivicClerk
+@dataclass
+class CivicClerkSource(Source):
+    """CivicClerk portals (https://<tenant>.portal.civicclerk.com).
+
+    The portal is a JavaScript app backed by a public OData API at
+    https://<tenant>.api.civicclerk.com/v1. Each event lists its published files
+    with a type such as "Agenda", "Agenda Packet" or "Minutes"; `files` picks which to read.
+    """
+
+    tenant: str = ""
+    files: list[str] = field(default_factory=lambda: ["Agenda", "Agenda Packet"])
+    max_pages: int = 10
+    platform: str = "CivicClerk"
+
+    def list_documents(self, start: date, end: date) -> list[Document]:
+        api = f"https://{self.tenant}.api.civicclerk.com/v1"
+        portal = f"https://{self.tenant}.portal.civicclerk.com"
+        wanted = {f.lower() for f in self.files}
+        url: str | None = f"{api}/Events"
+        params: dict | None = {
+            "$filter": (
+                f"startDateTime ge {start:%Y-%m-%d}T00:00:00Z and "
+                f"startDateTime lt {end + timedelta(days=1):%Y-%m-%d}T00:00:00Z"
+            ),
+            "$orderby": "startDateTime asc",
+        }
+        docs: list[Document] = []
+        for _ in range(self.max_pages):
+            data = self.http.get_json(url, params=params)
+            if not isinstance(data, dict) or not isinstance(data.get("value"), list):
+                raise SourceError(f"Unexpected CivicClerk response: {str(data)[:200]}")
+            for ev in data["value"]:
+                name = (ev.get("eventName") or ev.get("agendaName") or "Meeting").strip()
+                category = (ev.get("categoryName") or ev.get("eventCategoryName") or "").strip()
+                if not _body_allowed(f"{category} {name}", self.bodies):
+                    continue
+                # Times are local wall-clock times labelled Z, so the date part is the meeting date.
+                mdate = parse_date(ev.get("startDateTime") or ev.get("eventDate"))
+                detail = f"{portal}/event/{ev.get('id')}/files" if ev.get("id") is not None else portal
+                for f in ev.get("publishedFiles") or []:
+                    ftype = (f.get("type") or "").strip()
+                    if ftype.lower() not in wanted or f.get("fileId") is None:
+                        continue
+                    href = f"{api}/Meetings/GetMeetingFileStream(fileId={f['fileId']},plainText=false)"
+                    kind = "packet" if "packet" in ftype.lower() else ftype.lower()
+                    title = name if ftype.lower() in name.lower() else f"{name} {ftype.lower()}"
+                    docs.append(Document(self.name, self.city, name, mdate, title, href, kind, detail))
+            url, params = data.get("@odata.nextLink"), None
+            if not url:
+                break
+        else:
+            self.notes.append(f"Stopped after {self.max_pages} pages of events")
+        return docs
+
+
 # ---------------------------------------------------------------- document table
 @dataclass
 class DocTableSource(Source):
@@ -395,6 +452,8 @@ def build_sources(specs: list[dict], http: Http) -> list[Source]:
             sources.append(NovusSource(**common, **spec))
         elif kind == "link_page":
             sources.append(LinkPageSource(**common, **spec))
+        elif kind == "civicclerk":
+            sources.append(CivicClerkSource(**common, **spec))
         elif kind == "doc_table":
             sources.append(DocTableSource(**common, **spec))
         else:

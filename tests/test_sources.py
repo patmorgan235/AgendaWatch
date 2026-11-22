@@ -1,7 +1,7 @@
 from datetime import date
 
 from agendawatch.http import FetchError
-from agendawatch.sources import DocTableSource, LegistarSource, LinkPageSource, NovusSource, build_sources
+from agendawatch.sources import CivicClerkSource, DocTableSource, LegistarSource, LinkPageSource, NovusSource, build_sources
 
 from helpers import FakeHttp
 
@@ -193,3 +193,34 @@ def test_browser_host_routing_without_network():
     assert http._is_browser_host("https://www.cor.net/home/showpublisheddocument/1/2")
     assert not http._is_browser_host("https://richardsontx.new.swagit.com/views/614")
     assert http._host_headers["www.cor.net"] == BROWSER_HEADERS
+
+
+def test_civicclerk_events_and_paging():
+    api = "https://rowletttx.api.civicclerk.com/v1"
+    page1 = {"value": [
+        {"id": 109, "eventName": "City Council Meeting", "categoryName": "City Council",
+         "startDateTime": "2026-12-01T19:00:00Z", "publishedFiles": [
+             {"fileId": 7504, "type": "Agenda", "name": "12.01.26 City Council Meeting Agenda"},
+             {"fileId": 7505, "type": "Agenda Packet", "name": "12.01.26 City Council Meeting Agenda Packet"},
+             {"fileId": 7580, "type": "Minutes", "name": "Minutes"}]},
+        {"id": 110, "eventName": "City Council Meeting", "categoryName": "City Council",
+         "startDateTime": "2026-12-15T19:00:00Z", "publishedFiles": []},  # not posted yet
+    ], "@odata.nextLink": f"{api}/Events?$skip=2"}
+    page2 = {"value": [
+        {"id": 111, "eventName": "Parks Board", "categoryName": "Boards",
+         "startDateTime": "2026-12-03T18:00:00Z", "publishedFiles": [{"fileId": 9, "type": "Agenda"}]},
+    ]}
+    http = FakeHttp({f"{api}/Events": page1, f"{api}/Events?$skip=2": page2})
+    src = CivicClerkSource(name="Rowlett", city="Rowlett", http=http, tenant="rowletttx")
+    docs = src.list_documents(START, END)
+    assert [(d.meeting_date, d.kind, d.url.rsplit("=", 2)[1].split(",")[0]) for d in docs] == [
+        (date(2026, 12, 1), "agenda", "7504"),
+        (date(2026, 12, 1), "packet", "7505"),
+        (date(2026, 12, 3), "agenda", "9"),
+    ]
+    assert docs[0].url == f"{api}/Meetings/GetMeetingFileStream(fileId=7504,plainText=false)"
+    assert docs[1].title == "City Council Meeting agenda packet"
+    assert docs[0].detail_url == "https://rowletttx.portal.civicclerk.com/event/109/files"
+
+    only_council = CivicClerkSource(name="R", city="R", http=http, tenant="rowletttx", bodies=["City Council"])
+    assert {d.body for d in only_council.list_documents(START, END)} == {"City Council Meeting"}

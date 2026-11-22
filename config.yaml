@@ -37,6 +37,7 @@ terms:
 # type: legistar  — client is the name before .legistar.com
 # type: novus     — base_url is the NovusAGENDA "agendapublic" folder
 # type: link_page — any page linking to agendas; link_pattern picks which links are agendas
+# type: civicclerk — tenant is the name before .portal.civicclerk.com
 # type: doc_table — a page with a table row per meeting; columns names which document columns to read
 # Optional on any source:  user_agent: browser  (for sites that refuse non-browser clients)
 # Optional on any source:  bodies: ["City Council", "Transportation"]  (only meetings whose name contains one)
@@ -77,6 +78,16 @@ sources:
     link_pattern: '/videos/\d+/agenda'
     link_text_pattern: '^agenda$'
     max_links: 15
+
+  - name: Rowlett
+    type: civicclerk
+    tenant: rowletttx
+
+  - name: Garland
+    type: civicclerk
+    tenant: garlandtx
+    # Garland posts agendas for many boards. To narrow it, uncomment:
+    # bodies: ["City Council", "Development Services", "Plan Commission"]
 
   - name: Carrollton
     type: legistar
