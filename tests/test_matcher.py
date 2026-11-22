@@ -66,4 +66,6 @@ def test_parse_dates():
     assert parse_date("City Council Oct 26, 2026 02h 42m") == date(2026, 10, 26)
     assert parse_date("2026-11-04T00:00:00") == date(2026, 11, 4)
     assert parse_date("/docs/2026/CM/20260414_7575/AGENDApacket.pdf") == date(2026, 4, 14)
+    assert parse_date("August 3-4, 2026") == date(2026, 8, 3)
+    assert parse_date("Aug 3 & 4, 2026") == date(2026, 8, 3)
     assert parse_date("no date") is None

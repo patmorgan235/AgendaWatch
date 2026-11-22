@@ -110,6 +110,8 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.WARNING if args.quiet else logging.INFO, format="%(message)s")
     logging.getLogger("urllib3").setLevel(logging.ERROR)
+    for noisy in ("httpx", "httpcore", "hpack", "h2"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
     cfg = load_config(args.config)
     return {"run": cmd_run, "check": cmd_check, "search": cmd_search}[args.cmd](args, cfg)
 

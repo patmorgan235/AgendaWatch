@@ -23,6 +23,8 @@ _PATTERNS = [
     (re.compile(r"\b(\d{1,2})/(\d{1,2})/(\d{4})\b"), "mdy"),
     # 2026-10-27 (also ISO timestamps)
     (re.compile(r"\b(20\d{2})-(\d{2})-(\d{2})"), "ymd"),
+    # August 3-4, 2026 / Aug 3 & 4, 2026 (a multi-day meeting: use the first day)
+    (re.compile(r"\b([A-Za-z]{3,9})\.?\s+(\d{1,2})\s*(?:-|–|&|and|to)\s*\d{1,2},?\s+(\d{4})\b"), "Mdy"),
     # Oct 26, 2026 / October 26 2026 / Sept. 8, 2026
     (re.compile(r"\b([A-Za-z]{3,9})\.?\s+(\d{1,2}),?\s+(\d{4})\b"), "Mdy"),
     # 11/05/26
