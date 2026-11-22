@@ -1,6 +1,6 @@
 # AgendaWatch — Project Plan
 
-_Last updated: November 22, 2026 (Phases 0–3 complete; next: Phase 4)_
+_Last updated: November 22, 2026 (Phases 0–4 complete; next: Phase 5, coverage)_
 
 ## Goal
 
@@ -43,8 +43,8 @@ A searchable history of past agenda items is useful but secondary.
 | Titles only | Fort Worth, Dallas County's HTML agenda, and Dallas Legistar with attachments off give item titles but not staff reports. |
 | ~~Report hides earlier finds~~ | Fixed in Phase 1: the page shows every match for meetings in the window. |
 | Limited push delivery | The RSS/Atom and calendar feeds exist (Phase 1), but there are no email or Slack alerts for new matches (Later). |
-| No lead-time measurement | We don't know how many days of notice each source actually gives. |
-| Silent source drift | Plano and Fort Worth changed platforms in 2026 without notice; nothing flags a source that goes quiet. |
+| ~~No lead-time measurement~~ | Phase 4: the "Notice" column shows the median days of notice per source. |
+| ~~Silent source drift~~ | Phase 4: the stale-source check flags a source with no new agenda for 30+ days. |
 
 ## Decisions
 
@@ -193,12 +193,21 @@ so it came first.
 - The job runs image `agendawatch:c77d417`.
 - An incremental run, which reuses the saved database, takes about 2 minutes. A run starting with no database took 12 minutes.
 
-### Phase 4 — Operations and reliability
+### Phase 4 — Operations and reliability ✅ done Nov 22, 2026
 
 - [x] An alert when a run fails. Done in Phase 3: an email fires when no run has logged a successful `run_finished` event in 26 hours, which covers crashes, hangs, a stuck lock, every source failing, and the job not starting.
-- [ ] **Stale-source check:** flag any source with no new agendas in 30 days (configurable) in the report and logs.
-- [ ] **Lead time per source:** median days between first seeing an agenda and its meeting, shown in the Sources table.
-- [ ] A source-health history (listed, read, failed, errors) kept across runs.
+- [x] **Source-health history:** a `source_runs` table records every source's results (listed, read, unchanged, skipped, failed, new, error) for every run. The report shows a failure streak such as "Failing 3 runs in a row, since …"; three or more failures log a `failing_source` warning.
+- [x] **Stale-source check:**
+  - A source with no new agenda for more than `stale_after_days` (default 30; per-source `stale_after_days` overrides) is flagged "looks stale" in the Sources table and logged as a `stale_source` warning.
+  - Sources watched for less than that window aren't judged.
+  - A source that errors is reported as failing instead.
+- [x] **Lead time per source:** the Sources table's "Notice" column shows the median days between a meeting's agenda first appearing and the meeting, over meetings first seen in the last `lead_window_days` (180). It's measured per meeting, so an agenda and a later packet count once, and the first-day backfill is excluded. It's shown once at least 3 meetings have been measured.
+- [x] `index.html#sources` opens the table directly, and the footer has a "source health" link.
+
+**Notes:**
+- The health figures fill in over the coming weeks. Lead time needs agendas first seen after a source's first day, and staleness needs 30 or more days of history.
+- Hurst will show as failing every run from Azure, as expected (Phase 0).
+- **Possible follow-up:** a Log Analytics alert on `stale_source` events, so a quiet source emails you instead of waiting for someone to open the Sources table.
 
 ### Phase 5 — Coverage
 

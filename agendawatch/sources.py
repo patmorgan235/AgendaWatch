@@ -70,6 +70,7 @@ class Source:
     platform: str = "generic"
     section: str = ""                # report section, e.g. "DCTA member cities"
     note: str = ""                   # shown in the report's Sources table (e.g. "fallback: posts late")
+    stale_after_days: int | None = None   # overrides settings.stale_after_days for this source
 
     def list_documents(self, start: date, end: date) -> list[Document]:  # pragma: no cover
         raise NotImplementedError
@@ -667,6 +668,7 @@ def build_sources(specs: list[dict], http: Http) -> list[Source]:
         bodies = spec.pop("bodies", []) or []
         section = str(spec.pop("section", "") or "")
         note = str(spec.pop("note", "") or "")
+        stale = spec.pop("stale_after_days", None)
         user_agent = spec.pop("user_agent", None)
         if user_agent:
             hosts = {urlparse(u).netloc for u in spec.get("urls", []) + [spec.get("base_url") or ""]}
@@ -675,7 +677,8 @@ def build_sources(specs: list[dict], http: Http) -> list[Source]:
                     http.set_browser_host(host)
                 else:
                     http.set_host_headers(host, {"User-Agent": str(user_agent)})
-        common = dict(name=name, city=city, http=http, bodies=bodies, section=section, note=note)
+        common = dict(name=name, city=city, http=http, bodies=bodies, section=section, note=note,
+                      stale_after_days=int(stale) if stale is not None else None)
         if kind == "legistar":
             sources.append(LegistarSource(**common, **spec))
         elif kind == "novus":

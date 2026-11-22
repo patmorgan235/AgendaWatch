@@ -50,6 +50,7 @@ table{width:100%;border-collapse:collapse;background:var(--card);border:1px soli
 th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
 th{color:var(--muted);font-weight:600;font-size:.78rem;text-transform:uppercase;letter-spacing:.04em}
 .err{color:var(--warn)}
+tr.flag td{background:var(--newbg)}
 .note{color:var(--muted);font-size:.82rem}
 footer{margin-top:36px;color:var(--muted);font-size:.85rem}
 footer p{margin:4px 0}
@@ -78,12 +79,14 @@ footer p{margin:4px 0}
 
 <details id="sources-wrap">
   <summary>Sources checked in the last run</summary>
+  <p class="note">Notice = median days between an agenda first appearing and its meeting (recent meetings only).
+  A source is flagged stale when it hasn't produced a new agenda for longer than usual — often a sign the city moved to a new site.</p>
   <div class="tablewrap"><table id="sources"><thead><tr><th>Source</th><th>Section</th><th>Platform</th>
-  <th>Agendas</th><th>Read</th><th>New</th><th>Status</th></tr></thead><tbody></tbody></table></div>
+  <th>Agendas</th><th>New</th><th>Notice</th><th>Last new agenda</th><th>Status</th></tr></thead><tbody></tbody></table></div>
 </details>
 
 <footer>
-  <p>Subscribe: <a href="feed.xml">new mentions (Atom/RSS)</a> · <a href="upcoming.ics">upcoming meetings (calendar)</a> · <a href="data.json">data (JSON)</a></p>
+  <p>Subscribe: <a href="feed.xml">new mentions (Atom/RSS)</a> · <a href="upcoming.ics">upcoming meetings (calendar)</a> · <a href="data.json">data (JSON)</a> · <a href="#sources" id="sources-link">source health</a></p>
   <p>Agenda Watch searches publicly posted agendas automatically. Snippets can miss context and agendas change — always confirm against the official posted agenda linked on each meeting.</p>
   <p id="foot-run"></p>
 </footer>
@@ -280,6 +283,7 @@ footer p{margin:4px 0}
     writeQuery();
   }
   [fUp, fNew, fSec, fCity].forEach(function (c) { c.addEventListener("change", update); });
+  document.getElementById("sources-link").addEventListener("click", function () { document.getElementById("sources-wrap").open = true; });
   fQ.addEventListener("input", update);
 
   // ---- header, sources, footer --------------------------------------------
@@ -288,22 +292,43 @@ footer p{margin:4px 0}
     " · meetings " + fmtDay(DATA.window.start) + " to " + fmtDay(DATA.window.end) + " · watching for " + DATA.terms.join(", ");
   document.getElementById("foot-run").textContent = "Last run started " + fmtStamp(DATA.run.started) +
     (DATA.run.previous ? "; previous run " + fmtStamp(DATA.run.previous) : "") + ".";
-  var tb = document.querySelector("#sources tbody"), bad = 0;
+  var tb = document.querySelector("#sources tbody"), bad = 0, stale = 0;
+  function notice(s) {
+    if (s.lead_days == null || s.lead_samples < 3) return "—";
+    var d = Math.round(s.lead_days);
+    return (d <= 0 ? "on/after meeting day" : d + (d === 1 ? " day" : " days")) + " (" + s.lead_samples + ")";
+  }
   DATA.sources.forEach(function (s) {
     var bits = [];
     if (s.unchanged) bits.push(s.unchanged + " unchanged");
     if (s.skipped) bits.push(s.skipped + " already read");
     if (s.failed) bits.push(s.failed + " failed to download");
-    var status = el("td", null, [s.error ? el("span", { class: "err", text: s.error }) : (bits.join(", ") || "OK")]);
+    var status = el("td");
+    if (s.error) {
+      status.appendChild(el("span", { class: "err", text: s.error }));
+      if (s.failing_runs > 1) status.appendChild(el("div", { class: "err",
+        text: "Failing " + s.failing_runs + " runs in a row" + (s.failing_since ? ", since " + fmtStamp(s.failing_since) : "") }));
+    } else {
+      status.appendChild(document.createTextNode(bits.join(", ") || "OK"));
+    }
+    if (s.stale) status.appendChild(el("div", { class: "err",
+      text: "Looks stale: no new agenda in over " + s.stale_after_days + " days — check whether the city moved its agendas." }));
     (s.notes || []).forEach(function (n) { status.appendChild(el("div", { class: "note", text: n })); });
     if (s.error) bad++;
-    tb.appendChild(el("tr", null, [el("td", { text: s.name }), el("td", { text: s.section }), el("td", { text: s.platform }),
-      el("td", { text: String(s.listed) }), el("td", { text: String(s.read) }), el("td", { text: String(s.new_matches) }), status]));
+    if (s.stale) stale++;
+    var row = el("tr", (s.error || s.stale) ? { class: "flag" } : null, [el("td", { text: s.name }), el("td", { text: s.section }),
+      el("td", { text: s.platform }), el("td", { text: String(s.listed) }), el("td", { text: String(s.new_matches) }),
+      el("td", { text: notice(s) }), el("td", { text: s.last_new ? fmtDay(s.last_new) : "—" }), status]);
+    tb.appendChild(row);
   });
-  if (bad) document.querySelector("#sources-wrap summary").textContent += " — " + bad + " couldn't be read";
+  var flags = [];
+  if (bad) flags.push(bad + " couldn't be read");
+  if (stale) flags.push(stale + " look" + (stale === 1 ? "s" : "") + " stale");
+  if (flags.length) document.querySelector("#sources-wrap summary").textContent += " — " + flags.join(", ");
 
   // ---- start ---------------------------------------------------------------
   readQuery();
+  if (location.hash === "#sources") document.getElementById("sources-wrap").open = true;
   var target = location.hash.match(/^#m-([0-9a-f]+)$/);
   if (target) {
     var m = DATA.meetings.filter(function (x) { return x.id === target[1]; })[0];

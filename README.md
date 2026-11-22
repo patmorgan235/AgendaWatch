@@ -132,7 +132,18 @@ The page shows **every** mention for meetings in the window (10 days back, 60 ah
 - filter by section, city or meeting body, and term, or search the snippets;
 - share a filtered view (filters are kept in the page's address) or link to one meeting (`#m-…`).
 
-Each meeting shows how many days away it is, which terms it mentions, the matching passages with a link to the right page of the PDF, and links to the agenda, packet and meeting page. **Sources** at the bottom lists what was checked and anything that couldn't be read. Each source's `section:` in `config.yaml` decides where it appears.
+Each meeting shows how many days away it is, which terms it mentions, the matching passages with a link to the right page of the PDF, and links to the agenda, packet and meeting page.
+
+**Sources** at the bottom (or `index.html#sources`) is the health check:
+
+- what each source listed in the latest run;
+- **Notice**: the median days between an agenda first appearing and its meeting, so you can see which sources give early warning;
+- the date of the source's last new agenda.
+
+It flags:
+
+- a source that couldn't be read, with how many runs in a row it has failed;
+- a source that **looks stale**: no new agenda for longer than `stale_after_days` (30 by default, settable per source), which often means the city moved its agendas to a new site. Each source's `section:` in `config.yaml` decides where it appears.
 
 The same passage is never reported as new twice, even when a city re-posts an amended agenda.
 

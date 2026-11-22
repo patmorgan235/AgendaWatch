@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import logging
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from .extract import extract_pages
 from .http import FetchError, Http
@@ -30,6 +30,14 @@ class SourceStatus:
     error: str = ""
     section: str = ""
     notes: list[str] = field(default_factory=list)
+    # health, across runs (Store.source_health)
+    last_new: str | None = None          # date this source last produced a new agenda
+    stale: bool = False                  # no new agenda for longer than stale_after_days
+    stale_after_days: int | None = None
+    lead_days: float | None = None       # median days of notice (meeting date − first seen)
+    lead_samples: int = 0
+    failing_runs: int = 0                # consecutive runs ending with an error, including this one
+    failing_since: str | None = None
 
 
 @dataclass
@@ -98,14 +106,36 @@ def _process(doc: Document, store: Store, http: Http, terms, settings: dict, run
         log.info("  + %d new match(es) in %s %s (%s)", new, doc.city, doc.title, doc.meeting_date)
 
 
+def _apply_health(statuses: list[SourceStatus], health: dict, today: date, default_stale: int) -> None:
+    for st in statuses:
+        h = health.get(st.name) or {}
+        st.last_new = h.get("last_new")
+        st.lead_days = h.get("lead_days")
+        st.lead_samples = h.get("lead_samples", 0)
+        st.failing_runs = h.get("failing_runs", 0)
+        st.failing_since = h.get("failing_since")
+        limit = st.stale_after_days if st.stale_after_days is not None else default_stale
+        st.stale_after_days = limit
+        first_ever = h.get("first_ever")
+        # Only judge sources we've watched for longer than the limit, and that are being read at all
+        # (a source that errors is reported as failing instead).
+        if limit and not st.error and first_ever and st.last_new:
+            old_enough = (today - date.fromisoformat(first_ever)).days > limit
+            st.stale = old_enough and (today - date.fromisoformat(st.last_new)).days > limit
+
+
 def run(config: dict, backfill_days: int | None = None, http: Http | None = None, today: date | None = None) -> RunResult:
     settings = config.get("settings", {}) or {}
     terms = compile_terms(config["terms"])
     http = http or make_http(settings)
     sources = build_sources(config["sources"], http)
-    store = Store(settings.get("database", "data/agenda_watch.db"))
+    real_today = date.today()
+    today = today or real_today
+    # A run dated another day (tests, backfills) stamps "first seen" on that day too, so lead times
+    # and staleness stay consistent.
+    clock = None if today == real_today else (lambda: datetime.combine(today, datetime.now().time()).isoformat(timespec="seconds"))
+    store = Store(settings.get("database", "data/agenda_watch.db"), now=clock)
 
-    today = today or date.today()
     lookback = backfill_days if backfill_days is not None else int(settings.get("lookback_days", 10))
     start = today - timedelta(days=lookback)
     end = today + timedelta(days=int(settings.get("lookahead_days", 60)))
@@ -114,7 +144,8 @@ def run(config: dict, backfill_days: int | None = None, http: Http | None = None
     statuses: list[SourceStatus] = []
     try:
         for src in sources:
-            st = SourceStatus(src.name, src.city, src.platform, section=src.section)
+            st = SourceStatus(src.name, src.city, src.platform, section=src.section,
+                              stale_after_days=src.stale_after_days)
             statuses.append(st)
             if src.note:
                 st.notes.append(src.note)
@@ -133,14 +164,27 @@ def run(config: dict, backfill_days: int | None = None, http: Http | None = None
                 _process(doc, store, http, terms, settings, run_id, st, today)
         store.finish_run(run_id)
         for st in statuses:
+            store.record_source_run(run_id, st)
+        _apply_health(statuses, store.source_health(today, int(settings.get("lead_window_days", 180))),
+                      today, int(settings.get("stale_after_days", 30)))
+        for st in statuses:
             log.info(
                 "source %s: listed=%d read=%d unchanged=%d skipped=%d failed=%d new=%d%s",
                 st.name, st.listed, st.read, st.unchanged, st.skipped, st.failed, st.new_matches,
                 f" error={st.error}" if st.error else "",
                 extra={"fields": {"event": "source", "source": st.name, "section": st.section, "listed": st.listed,
                                   "read": st.read, "unchanged": st.unchanged, "skipped": st.skipped,
-                                  "failed": st.failed, "new_matches": st.new_matches, "error": st.error or None}},
+                                  "failed": st.failed, "new_matches": st.new_matches, "error": st.error or None,
+                                  "last_new": st.last_new, "stale": st.stale, "lead_days": st.lead_days,
+                                  "failing_runs": st.failing_runs}},
             )
+            if st.stale:
+                log.warning("source %s looks stale: no new agenda since %s", st.name, st.last_new,
+                            extra={"fields": {"event": "stale_source", "source": st.name, "last_new": st.last_new}})
+            if st.failing_runs >= 3:
+                log.warning("source %s has failed %d runs in a row (since %s)", st.name, st.failing_runs,
+                            st.failing_since, extra={"fields": {"event": "failing_source", "source": st.name,
+                                                                "failing_runs": st.failing_runs}})
         return RunResult(
             run_id=run_id, start=start, end=end, statuses=statuses,
             new_matches=store.matches_for_run(run_id),
