@@ -63,6 +63,7 @@ class Source:
     bodies: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     platform: str = "generic"
+    section: str = ""                # report section, e.g. "DCTA member cities"
 
     def list_documents(self, start: date, end: date) -> list[Document]:  # pragma: no cover
         raise NotImplementedError
@@ -285,7 +286,11 @@ class LinkPageSource(Source):
         if errors:
             self.notes.append(f"{len(errors)} page(s) couldn't be read")
         docs = []
-        for href, ctx in list(candidates.items())[: self.max_links]:
+        # Filter by date before capping, so a long archive on one page can't crowd out another page.
+        for href, ctx in candidates.items():
+            if len(docs) >= self.max_links:
+                self.notes.append(f"Stopped at {self.max_links} agendas (max_links)")
+                break
             row_text = ctx.split(" || ")[0]
             mdate = parse_date(row_text) or parse_date(unquote(href))
             if self.meeting_name:
@@ -505,6 +510,7 @@ def build_sources(specs: list[dict], http: Http) -> list[Source]:
         name = spec.pop("name")
         city = spec.pop("city", name)
         bodies = spec.pop("bodies", []) or []
+        section = str(spec.pop("section", "") or "")
         user_agent = spec.pop("user_agent", None)
         if user_agent:
             hosts = {urlparse(u).netloc for u in spec.get("urls", []) + [spec.get("base_url") or ""]}
@@ -513,7 +519,7 @@ def build_sources(specs: list[dict], http: Http) -> list[Source]:
                     http.set_browser_host(host)
                 else:
                     http.set_host_headers(host, {"User-Agent": str(user_agent)})
-        common = dict(name=name, city=city, http=http, bodies=bodies)
+        common = dict(name=name, city=city, http=http, bodies=bodies, section=section)
         if kind == "legistar":
             sources.append(LegistarSource(**common, **spec))
         elif kind == "novus":

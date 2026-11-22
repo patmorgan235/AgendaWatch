@@ -19,6 +19,12 @@ def test_dart_is_case_sensitive_whole_word():
     assert "DART" not in names("DARTboard installation")
 
 
+def test_dcta_terms():
+    counts = names("Interlocal agreement with the Denton County\nTransportation Authority (DCTA) for GoZone service")
+    assert counts["DCTA"] == 1 and counts["Denton County Transportation Authority"] == 1
+    assert "DCTA" not in names("dcta.net")  # acronym is case-sensitive
+
+
 def test_full_name_across_line_break():
     c = names("agreement with the Dallas Area\nRapid   Transit authority")
     assert c["Dallas Area Rapid Transit"] == 1
@@ -72,4 +78,5 @@ def test_parse_dates():
     assert parse_date("agendartc1-23-2025.pdf") == date(2025, 1, 23)
     assert parse_date("agendartc03122026ts.pdf") == date(2026, 3, 12)
     assert parse_date("/docs/2026/CM/20260414_7575/x.pdf") == date(2026, 4, 14)  # YYYYMMDD still wins
+    assert parse_date("February25, 2020") == date(2020, 2, 25)
     assert parse_date("no date") is None

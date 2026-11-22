@@ -113,7 +113,7 @@ class Store:
 
     def matches_for_run(self, run_id: int) -> list[sqlite3.Row]:
         return self.db.execute(
-            """SELECT m.*, d.city, d.body, d.meeting_date, d.title, d.kind, d.detail_url
+            """SELECT m.*, d.source, d.city, d.body, d.meeting_date, d.title, d.kind, d.detail_url
                FROM matches m JOIN documents d ON d.url = m.url
                WHERE m.run_id = ? ORDER BY d.meeting_date, d.city, d.body, m.term, m.page""",
             (run_id,),
@@ -121,7 +121,7 @@ class Store:
 
     def upcoming_with_matches(self, today: date) -> list[sqlite3.Row]:
         return self.db.execute(
-            """SELECT d.url, d.city, d.body, d.meeting_date, d.title, d.kind, d.detail_url,
+            """SELECT d.url, d.source, d.city, d.body, d.meeting_date, d.title, d.kind, d.detail_url,
                       GROUP_CONCAT(DISTINCT m.term) AS terms, COUNT(m.id) AS n
                FROM documents d JOIN matches m ON m.url = d.url
                WHERE d.meeting_date >= ? GROUP BY d.url ORDER BY d.meeting_date, d.city""",

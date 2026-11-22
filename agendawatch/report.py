@@ -43,7 +43,9 @@ header p{margin:0;color:var(--muted)}
 .stat span{color:var(--muted);font-size:.85rem}
 h2{font-size:1.15rem;margin:34px 0 12px;padding-bottom:6px;border-bottom:2px solid var(--line)}
 .meeting{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:0 0 14px}
-.meeting h3{margin:0;font-size:1.05rem}
+.meeting h4{margin:0;font-size:1.05rem}
+h2.section{font-size:1.3rem;margin-top:44px;border-bottom-color:var(--accent)}
+h3.sub{font-size:1rem;margin:22px 0 10px;color:var(--muted);font-weight:600}
 .meta{color:var(--muted);font-size:.9rem;margin:2px 0 10px}
 .meta a{color:var(--accent)}
 .hit{border-top:1px solid var(--line);padding:10px 0 4px}
@@ -63,6 +65,40 @@ td a{color:var(--accent)}
 .tablewrap{overflow-x:auto}
 footer{margin-top:40px;color:var(--muted);font-size:.82rem}
 """
+
+
+OTHER = "Other sources"
+
+
+def source_sections(res: RunResult) -> dict[str, str]:
+    """Source name → report section, from today's run (config order)."""
+    return {s.name: s.section or OTHER for s in res.statuses}
+
+
+def section_order(res: RunResult) -> list[str]:
+    return list(dict.fromkeys([s.section or OTHER for s in res.statuses] + [OTHER]))
+
+
+def _meeting_card(url: str, rows: list) -> list[str]:
+    r0 = rows[0]
+    links = [f"<a href='{escape(url)}'>Open agenda</a>"] if r0["kind"] != "items" else []
+    if r0["detail_url"]:
+        links.append(f"<a href='{escape(r0['detail_url'])}'>Meeting page</a>")
+    out = ["<section class='meeting'>",
+           f"<h4>{escape(r0['city'])} · {escape(r0['body'] or 'Meeting')}</h4>",
+           f"<div class='meta'>{escape(_safe_fmt_date(r0['meeting_date']))}"
+           f"{' · ' + ' · '.join(links) if links else ''}</div>"]
+    for r in rows:
+        page = (f"<a class='page' href='{_page_link(url, r['page'], r['kind'])}'>page {r['page']}</a>"
+                if r["kind"] != "items" else "")
+        out.append(
+            "<div class='hit'>"
+            f"<span class='chip'>{escape(r['term'])}</span>{page}"
+            f"<p class='snip'>{escape(r['before'])}<mark>{escape(r['hit'])}</mark>{escape(r['after'])}</p>"
+            "</div>"
+        )
+    out.append("</section>")
+    return out
 
 
 def build_html(res: RunResult, terms: list[str]) -> str:
@@ -94,44 +130,41 @@ def build_html(res: RunResult, terms: list[str]) -> str:
         out.append(f"<p class='err'>{errors} source(s) couldn't be read today — see Sources below.</p>")
 
     since = f" since {escape(res.previous_run[:16].replace('T', ' '))}" if res.previous_run else ""
-    out.append(f"<h2>New mentions{since}</h2>")
-    if not groups:
-        out.append("<div class='empty'>No new mentions of your terms today.</div>")
+    section_of = source_sections(res)
+    order = section_order(res)
+    new_by_section: "OrderedDict[str, OrderedDict[str, list]]" = OrderedDict((sec, OrderedDict()) for sec in order)
     for url, rows in groups.items():
-        r0 = rows[0]
-        links = [f"<a href='{escape(url)}'>Open agenda</a>"] if r0["kind"] != "items" else []
-        if r0["detail_url"]:
-            links.append(f"<a href='{escape(r0['detail_url'])}'>Meeting page</a>")
-        out.append("<section class='meeting'>")
-        out.append(f"<h3>{escape(r0['city'])} · {escape(r0['body'] or 'Meeting')}</h3>")
-        out.append(f"<div class='meta'>{escape(_safe_fmt_date(r0['meeting_date']))}"
-                   f"{' · ' + ' · '.join(links) if links else ''}</div>")
-        for r in rows:
-            page = (f"<a class='page' href='{_page_link(url, r['page'], r['kind'])}'>page {r['page']}</a>"
-                    if r["kind"] != "items" else "")
-            out.append(
-                "<div class='hit'>"
-                f"<span class='chip'>{escape(r['term'])}</span>{page}"
-                f"<p class='snip'>{escape(r['before'])}<mark>{escape(r['hit'])}</mark>{escape(r['after'])}</p>"
-                "</div>"
-            )
-        out.append("</section>")
+        sec = section_of.get(rows[0]["source"], OTHER)
+        new_by_section.setdefault(sec, OrderedDict())[url] = rows
+    upcoming_by_section: "OrderedDict[str, list]" = OrderedDict((sec, []) for sec in order)
+    for u in res.upcoming:
+        upcoming_by_section.setdefault(section_of.get(u["source"], OTHER), []).append(u)
 
-    out.append("<h2>Upcoming meetings that mention your terms</h2>")
-    if not res.upcoming:
-        out.append("<div class='empty'>None of the posted upcoming agendas mention your terms yet.</div>")
-    else:
-        out.append("<div class='tablewrap'><table><tr><th>Date</th><th>City</th><th>Meeting</th><th>Terms</th><th></th></tr>")
-        for u in res.upcoming:
-            link = u["detail_url"] if u["kind"] == "items" and u["detail_url"] else u["url"]
-            out.append(
-                f"<tr><td>{escape(_safe_fmt_date(u['meeting_date']))}</td><td>{escape(u['city'])}</td>"
-                f"<td>{escape(u['body'] or '')}</td><td>{escape((u['terms'] or '').replace(',', ', '))}</td>"
-                f"<td><a href='{escape(link)}'>Agenda</a></td></tr>"
-            )
-        out.append("</table></div>")
+    for sec in new_by_section:
+        sec_groups, sec_upcoming = new_by_section[sec], upcoming_by_section.get(sec, [])
+        if sec == OTHER and not sec_groups and not sec_upcoming:
+            continue
+        out.append(f"<h2 class='section'>{escape(sec)}</h2>")
+        out.append(f"<h3 class='sub'>New mentions{since}</h3>")
+        if not sec_groups:
+            out.append("<div class='empty'>No new mentions today.</div>")
+        for url, rows in sec_groups.items():
+            out.extend(_meeting_card(url, rows))
+        out.append("<h3 class='sub'>Upcoming meetings that mention your terms</h3>")
+        if not sec_upcoming:
+            out.append("<div class='empty'>None of the posted upcoming agendas mention your terms yet.</div>")
+        else:
+            out.append("<div class='tablewrap'><table><tr><th>Date</th><th>City</th><th>Meeting</th><th>Terms</th><th></th></tr>")
+            for u in sec_upcoming:
+                link = u["detail_url"] if u["kind"] == "items" and u["detail_url"] else u["url"]
+                out.append(
+                    f"<tr><td>{escape(_safe_fmt_date(u['meeting_date']))}</td><td>{escape(u['city'])}</td>"
+                    f"<td>{escape(u['body'] or '')}</td><td>{escape((u['terms'] or '').replace(',', ', '))}</td>"
+                    f"<td><a href='{escape(link)}'>Agenda</a></td></tr>"
+                )
+            out.append("</table></div>")
 
-    out.append("<h2>Sources</h2><div class='tablewrap'><table><tr><th>Source</th><th>Platform</th>"
+    out.append("<h2 class='section'>Sources</h2><div class='tablewrap'><table><tr><th>Source</th><th>Section</th><th>Platform</th>"
                "<th>Agendas</th><th>Read</th><th>New mentions</th><th>Status</th></tr>")
     for s in res.statuses:
         if s.error:
@@ -147,7 +180,7 @@ def build_html(res: RunResult, terms: list[str]) -> str:
             status = ", ".join(bits) or "OK"
         if s.notes:
             status += "".join(f"<div class='note'>{escape(n[:240])}</div>" for n in s.notes[:4])
-        out.append(f"<tr><td>{escape(s.name)}</td><td>{escape(s.platform)}</td><td>{s.listed}</td>"
+        out.append(f"<tr><td>{escape(s.name)}</td><td>{escape(s.section or OTHER)}</td><td>{escape(s.platform)}</td><td>{s.listed}</td>"
                    f"<td>{s.read}</td><td>{s.new_matches}</td><td>{status}</td></tr>")
     out.append("</table></div>")
     out.append("<footer>Generated by agenda-watch. Page links open the agenda PDF at the matching page "
@@ -171,13 +204,19 @@ def text_summary(res: RunResult) -> str:
     if not res.new_matches:
         lines.append("No new mentions today.")
     else:
-        seen = OrderedDict()
+        section_of = source_sections(res)
+        by_section: "OrderedDict[str, OrderedDict]" = OrderedDict((sec, OrderedDict()) for sec in section_order(res))
         for r in res.new_matches:
             k = (r["city"], r["body"], r["meeting_date"])
-            seen.setdefault(k, set()).add(r["term"])
-        lines.append(f"{len(res.new_matches)} new mention(s) in {len(seen)} agenda(s):")
-        for (city, body, d), terms in seen.items():
-            lines.append(f"  • {d or '????-??-??'}  {city} — {body}: {', '.join(sorted(terms))}")
+            by_section.setdefault(section_of.get(r["source"], OTHER), OrderedDict()).setdefault(k, set()).add(r["term"])
+        total = sum(len(v) for v in by_section.values())
+        lines.append(f"{len(res.new_matches)} new mention(s) in {total} agenda(s):")
+        for sec, seen in by_section.items():
+            if not seen:
+                continue
+            lines.append(f"  {sec}")
+            for (city, body, d), terms in seen.items():
+                lines.append(f"    • {d or '????-??-??'}  {city} — {body}: {', '.join(sorted(terms))}")
     for s in res.statuses:
         if s.error:
             lines.append(f"  ! {s.name}: {s.error[:160]}")

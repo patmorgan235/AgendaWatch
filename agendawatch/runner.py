@@ -28,6 +28,7 @@ class SourceStatus:
     failed: int = 0
     new_matches: int = 0
     error: str = ""
+    section: str = ""
     notes: list[str] = field(default_factory=list)
 
 
@@ -110,7 +111,7 @@ def run(config: dict, backfill_days: int | None = None, http: Http | None = None
     statuses: list[SourceStatus] = []
     try:
         for src in sources:
-            st = SourceStatus(src.name, src.city, src.platform)
+            st = SourceStatus(src.name, src.city, src.platform, section=src.section)
             statuses.append(st)
             log.info("%s (%s)", src.name, src.platform)
             try:

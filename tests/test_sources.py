@@ -270,3 +270,12 @@ def test_civicweb_document_center():
     assert f"{base}/filepro/documents/1011482" not in http.calls
     both = CivicWebSource(name="DC", city="DC", http=http, base_url=base, format="both")
     assert len(both.list_documents(START, END)) == 2
+
+
+def test_link_page_caps_after_date_filter():
+    old = "".join(f'<li><a href="/a?ADID={i}">January {i % 28 + 1}, 2019</a></li>' for i in range(50))
+    url1, url2 = "https://hv.example/Archive?AMID=50", "https://hv.example/Archive?AMID=57"
+    http = FakeHttp({url1: old, url2: '<li><a href="/a?ADID=999">November 3, 2026 - Special Work Session</a></li>'})
+    src = LinkPageSource(name="HV", city="HV", http=http, urls=[url1, url2],
+                         link_pattern=r"ADID=\d+", meeting_name="City Council", max_links=10)
+    assert [d.url for d in src.list_documents(START, END)] == ["https://hv.example/a?ADID=999"]

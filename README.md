@@ -1,6 +1,8 @@
 # agenda-watch
 
-Checks nine North Texas city agenda sites, plus the Regional Transportation Council and Dallas County Commissioners Court every day, searches each agenda for your key terms, and writes a report of new mentions.
+Checks North Texas agenda sites every day, searches each agenda for your key terms, and writes a report of new mentions, grouped into sections.
+
+**DART member cities**
 
 | City | Platform | How it's read |
 |---|---|---|
@@ -13,10 +15,23 @@ Checks nine North Texas city agenda sites, plus the Regional Transportation Coun
 | Addison | Addison agenda portal | meeting pages → agenda packet PDFs |
 | Rowlett | CivicClerk (`rowletttx`) | CivicClerk API → agenda + packet PDFs |
 | Garland | CivicClerk (`garlandtx`) | same |
+
+**DCTA member cities**
+
+| City | Platform | How it's read |
+|---|---|---|
+| Denton | Legistar (`denton-tx`) | Legistar Web API |
+| Lewisville | Legistar (`cityoflewisville`) | same |
+| Highland Village | CivicPlus Archive Center | City Council and special meeting agenda PDFs |
+
+**Regional**
+
+| Body | Platform | How it's read |
+|---|---|---|
 | Regional Transportation Council | NCTCOG RTC page | agenda + full meeting packet PDFs |
 | Dallas County | CivicWeb Commissioners Court | HTML agenda + full PDF with briefings, from the Document Center |
 
-Terms: DART, Dallas Area Rapid Transit, Transit, GMP, General Mobility Program, Streetcar.
+Terms: DART, Dallas Area Rapid Transit, Transit, GMP, General Mobility Program, DCTA, Denton County Transportation Authority, Streetcar.
 
 ## Setup (once)
 
@@ -49,11 +64,12 @@ python agenda_watch.py run --backfill 90 --open
 python agenda_watch.py run --open
 ```
 
-The report is saved to `reports/agenda-report-YYYY-MM-DD.html`, and `reports/latest.html` always holds the newest one. It has three parts:
+The report is saved to `reports/agenda-report-YYYY-MM-DD.html`, and `reports/latest.html` always holds the newest one. It has a block for each section (DART member cities, DCTA member cities, Regional), each with:
 
 - **New mentions** — matches not seen in any earlier report, grouped by meeting, with the surrounding text and a link that opens the PDF at the right page.
 - **Upcoming meetings that mention your terms** — every posted future agenda with a match, new or not.
-- **Sources** — what was checked per city, and any site that couldn't be read.
+
+and at the end, **Sources** — what was checked per city, and any site that couldn't be read. Each source's `section:` in `config.yaml` decides where it appears.
 
 The same passage is never reported twice, even when a city re-posts an amended agenda. Only genuinely new items show up as new.
 

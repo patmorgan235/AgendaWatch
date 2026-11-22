@@ -29,6 +29,9 @@ terms:
       - construction manager at risk
       - CMAR
   - name: General Mobility Program
+  - name: DCTA
+    case_sensitive: true
+  - name: Denton County Transportation Authority
   - name: Streetcar
     pattern: 'street[\s\-]?cars?'   # street car, streetcar, street-car, streetcars
     regex: true
@@ -40,11 +43,13 @@ terms:
 # type: civicclerk — tenant is the name before .portal.civicclerk.com
 # type: civicweb  — base_url is the CivicWeb site; meeting_types names folders under Document Center → Agendas
 # type: doc_table — a page with a table row per meeting; columns names which document columns to read
-# Optional on any source:  user_agent: browser  (for sites that refuse non-browser clients)
-# Optional on any source:  bodies: ["City Council", "Transportation"]  (only meetings whose name contains one)
+# Optional on any source:  section: "DCTA member cities"  (groups sources in the report, in config order)
+#                          user_agent: browser  (for sites that refuse non-browser clients)
+#                          bodies: ["City Council", "Transportation"]  (only meetings whose name contains one)
 #                          enabled: false
 sources:
   - name: Dallas
+    section: DART member cities
     type: legistar
     client: cityofdallas
     # Dallas posts agendas for dozens of boards. To narrow it, uncomment:
@@ -52,14 +57,17 @@ sources:
     attachments: none           # none | names (also search item titles & attachment names) | download
 
   - name: Farmers Branch
+    section: DART member cities
     type: legistar
     client: farmersbranch
 
   - name: Plano
+    section: DART member cities
     type: legistar
     client: plano           # moved from NovusAGENDA to Legistar in July 2026
 
   - name: Richardson
+    section: DART member cities
     type: doc_table
     # cor.net posts the agenda and packet about 6 days before each council meeting.
     # The site blocks non-browser clients, so requests to it identify as a browser.
@@ -69,6 +77,7 @@ sources:
     columns: [agenda, packet]
 
   - name: Richardson (video archive)
+    section: DART member cities
     city: Richardson
     type: link_page
     enabled: false
@@ -81,24 +90,29 @@ sources:
     max_links: 15
 
   - name: Rowlett
+    section: DART member cities
     type: civicclerk
     tenant: rowletttx
 
   - name: Garland
+    section: DART member cities
     type: civicclerk
     tenant: garlandtx
     # Garland posts agendas for many boards. To narrow it, uncomment:
     # bodies: ["City Council", "Development Services", "Plan Commission"]
 
   - name: Carrollton
+    section: DART member cities
     type: legistar
     client: carrolltontx
 
   - name: University Park
+    section: DART member cities
     type: legistar
     client: uptexas
 
   - name: Addison
+    section: DART member cities
     type: link_page
     urls:
       - https://agendas.addisontx.gov/agenda_publish.cfm
@@ -108,8 +122,32 @@ sources:
     follow_pattern: 'agenda_publish\.cfm\?.*seq=\d+'   # meeting pages that hold the PDF links
     max_links: 30
 
+  # ---------------------------------------------------------------- DCTA member cities
+  - name: Denton
+    type: legistar
+    client: denton-tx
+    section: DCTA member cities
+
+  - name: Lewisville
+    type: legistar
+    client: cityoflewisville
+    section: DCTA member cities
+
+  - name: Highland Village
+    type: link_page
+    # CivicPlus Archive Center: 50 = City Council agendas, 57 = special meeting agendas.
+    urls:
+      - https://www.highlandvillage.org/Archive.aspx?AMID=50
+      - https://www.highlandvillage.org/Archive.aspx?AMID=57
+    link_pattern: 'Archive\.aspx\?ADID=\d+'
+    link_text_pattern: '^(?!.*cancel)'     # skip "November 24, 2026 - Canceled"
+    meeting_name: City Council
+    max_links: 40
+    section: DCTA member cities
+
   # ---------------------------------------------------------------- regional bodies
   - name: RTC (NCTCOG)
+    section: Regional
     city: Regional Transportation Council
     type: link_page
     # NCTCOG lists each RTC meeting's agenda and full packet ("Agenda (including all meeting
@@ -122,6 +160,7 @@ sources:
     max_links: 60
 
   - name: Dallas County
+    section: Regional
     type: civicweb
     base_url: https://dallascounty.civicweb.net
     meeting_types: ["Commissioners Court", "Commissioners Court - Special Called Session"]

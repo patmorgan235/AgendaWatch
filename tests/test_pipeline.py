@@ -19,10 +19,11 @@ def config(tmp_path):
     cfg = yaml.safe_load((ROOT / "config.yaml").read_text())
     cfg["settings"].update(database=str(tmp_path / "t.db"), report_dir=str(tmp_path / "r"), request_delay_seconds=0)
     cfg["sources"] = [
-        {"name": "Dallas", "type": "legistar", "client": "cityofdallas"},
-        {"name": "Plano", "type": "novus", "base_url": "https://plano.novusagenda.com/agendapublic"},
+        {"name": "Dallas", "type": "legistar", "client": "cityofdallas", "section": "DART member cities"},
+        {"name": "Plano", "type": "novus", "base_url": "https://plano.novusagenda.com/agendapublic",
+         "section": "DCTA member cities"},  # stands in for a DCTA city in these tests
         {"name": "Addison", "type": "link_page", "urls": ["https://agendas.addisontx.gov/agenda_publish.cfm"],
-         "link_pattern": r"\.pdf"},
+         "link_pattern": r"\.pdf", "section": "DART member cities"},
     ]
     return cfg
 
@@ -73,7 +74,14 @@ def test_full_run_dedupes_and_reports(tmp_path):
     html = build_html(res, ["DART"])
     assert "<mark>DART</mark>" in html and "#page=2" in html and "Transportation and Infrastructure" in html
     assert "couldn't be read today" in html
-    assert "new mention" in text_summary(res)
+    summary = text_summary(res)
+    assert "new mention" in summary
+    assert summary.index("DART member cities") < summary.index("Dallas —") < summary.index("DCTA member cities") < summary.index("Plano —")
+
+    # Each section gets its own block, in config order, holding its own meetings.
+    dart_at, dcta_at = html.index(">DART member cities</h2>"), html.index(">DCTA member cities</h2>")
+    assert dart_at < html.index("Transportation and Infrastructure") < dcta_at < html.index("Plano · City Council")
+    assert "Other sources" not in html.split(">Sources</h2>")[0]
 
     # Second run, nothing changed: no new matches, nothing re-extracted.
     res2 = run(cfg, http=FakeHttp(routes(pdf)), today=TODAY)
