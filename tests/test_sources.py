@@ -1,7 +1,7 @@
 from datetime import date
 
 from agendawatch.http import FetchError
-from agendawatch.sources import CivicClerkSource, CivicWebSource, DocTableSource, LegistarSource, LinkPageSource, NovusSource, build_sources
+from agendawatch.sources import CivicClerkSource, CivicWebSource, DocsPublishedSource, DocTableSource, LegistarSource, LinkPageSource, NovusSource, build_sources
 
 from helpers import FakeHttp
 
@@ -227,6 +227,9 @@ def test_civicclerk_events_and_paging():
 
 
 RTC_PAGE = """
+<div class="table-row"><div class="table-cell"><span class="month">August 18</span></div>
+ <div class="table-cell"><a class="link" href="/getContentAsset/aaaa/dfc3/agendapacketaugust22.pdf">Agenda (including all meeting materials)</a></div>
+</div>
 <div class="table-row"><div class="table-cell"><span class="month">November 5</span></div>
  <div class="table-cell">
   <a class="link" href="/getContentAsset/4fa4/dfc3/agendartc11-05-2026.pdf?language=en-US">Agenda</a>
@@ -241,7 +244,7 @@ def test_rtc_link_page_dates_from_file_names():
     url = "https://www.nctcog.org/trans/about/committees/regional-transportation-council"
     src = LinkPageSource(name="RTC", city="RTC", http=FakeHttp({url: RTC_PAGE}), urls=[url],
                          link_pattern=r"/getContentAsset/.+\.pdf", link_text_pattern="^Agenda",
-                         meeting_name="Regional Transportation Council")
+                         meeting_name="Regional Transportation Council", skip_undated=True)
     docs = src.list_documents(START, END)
     assert [(d.meeting_date, d.body, d.url.split("/")[-1].split("?")[0]) for d in docs] == [
         (date(2026, 11, 5), "Regional Transportation Council", "agendartc11-05-2026.pdf"),
@@ -279,3 +282,35 @@ def test_link_page_caps_after_date_filter():
     src = LinkPageSource(name="HV", city="HV", http=http, urls=[url1, url2],
                          link_pattern=r"ADID=\d+", meeting_name="City Council", max_links=10)
     assert [d.url for d in src.list_documents(START, END)] == ["https://hv.example/a?ADID=999"]
+
+
+def test_docs_published_outline_and_utc_dates():
+    api = "https://api.docassembler.io/api"
+    org_id = "da44"
+    agenda_type = {"Name": "Agenda"}
+    listing = [
+        {"MeetingType": "City Council Meeting", "MeetingDate": "2026-11-11T00:00:00",  # Nov 10, 6 pm Central
+         "AgendaDocumentId": "a1", "WP_DocumentType": agenda_type},
+        {"MeetingType": "City Council Meeting", "MeetingDate": "2026-11-11T00:00:00",
+         "AgendaDocumentId": "m1", "WP_DocumentType": {"Name": "Minutes"}},
+        {"MeetingType": "Old Meeting", "MeetingDate": "2026-06-23T14:00:00",
+         "AgendaDocumentId": "o1", "WP_DocumentType": agenda_type},
+    ]
+    doc = {"Title": "City Council Meeting - November 10 2026", "MeetingType": "City Council Meeting",
+           "MeetingVenue": "Fort Worth City Hall", "WP_Sections": [
+               {"Number": "9.0", "Title": "Non-Consent Agenda", "WP_Items": [
+                   {"Number": "9.1", "Title": "Interlocal agreement with Trinity Metro for TEXRail",
+                    "WP_Attachments": [{"Title": "Trinity Metro ILA exhibit"}]}]}]}
+    http = FakeHttp({
+        f"{api}/organisation/fortworthtexas": {"Id": org_id},
+        f"{api}/documents/{org_id}": listing,
+        f"{api}/document/a1": doc,
+    })
+    src = DocsPublishedSource(name="Fort Worth", city="Fort Worth", http=http, org="fortworthtexas")
+    docs = src.list_documents(START, END)
+    assert len(docs) == 1
+    d = docs[0]
+    assert d.meeting_date == date(2026, 11, 10)
+    assert d.url == "https://docspublished.io/fortworthtexas/document/a1" and d.kind == "items"
+    assert "9.1 Interlocal agreement with Trinity Metro for TEXRail" in d.inline_text
+    assert "Attachment: Trinity Metro ILA exhibit" in d.inline_text

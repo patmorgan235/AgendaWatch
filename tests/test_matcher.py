@@ -25,6 +25,10 @@ def test_dcta_terms():
     assert "DCTA" not in names("dcta.net")  # acronym is case-sensitive
 
 
+def test_trinity_metro():
+    assert names("Interlocal agreement with Trinity\nMetro for TEXRail")["Trinity Metro"] == 1
+
+
 def test_full_name_across_line_break():
     c = names("agreement with the Dallas Area\nRapid   Transit authority")
     assert c["Dallas Area Rapid Transit"] == 1

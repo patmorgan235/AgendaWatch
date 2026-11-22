@@ -32,6 +32,7 @@ terms:
   - name: DCTA
     case_sensitive: true
   - name: Denton County Transportation Authority
+  - name: Trinity Metro
   - name: Streetcar
     pattern: 'street[\s\-]?cars?'   # street car, streetcar, street-car, streetcars
     regex: true
@@ -41,6 +42,7 @@ terms:
 # type: novus     — base_url is the NovusAGENDA "agendapublic" folder
 # type: link_page — any page linking to agendas; link_pattern picks which links are agendas
 # type: civicclerk — tenant is the name before .portal.civicclerk.com
+# type: docspublished — org is the name after docspublished.io/
 # type: civicweb  — base_url is the CivicWeb site; meeting_types names folders under Document Center → Agendas
 # type: doc_table — a page with a table row per meeting; columns names which document columns to read
 # Optional on any source:  section: "DCTA member cities"  (groups sources in the report, in config order)
@@ -145,6 +147,14 @@ sources:
     max_links: 40
     section: DCTA member cities
 
+  # ---------------------------------------------------------------- Trinity Metro member cities
+  - name: Fort Worth
+    type: docspublished
+    org: fortworthtexas      # moved from Legistar (fortworthgov) on June 17, 2026
+    # Reads each agenda's sections, item titles and attachment titles. The full agenda
+    # PDFs (100-350 MB) aren't available through the public API.
+    section: Trinity Metro member cities
+
   # ---------------------------------------------------------------- regional bodies
   - name: RTC (NCTCOG)
     section: Regional
@@ -157,6 +167,7 @@ sources:
     link_pattern: '/getContentAsset/.+\.pdf'
     link_text_pattern: '^Agenda'
     meeting_name: Regional Transportation Council
+    skip_undated: true        # 2022-23 archive files have no usable date in their names
     max_links: 60
 
   - name: Dallas County

@@ -7,6 +7,8 @@ Each source returns Document objects; the runner downloads and searches them.
   novus      NovusAGENDA (no city uses it now; Plano left it in July 2026).
   link_page  Any page that links to agendas (Addison, Richardson's Swagit archive).
   civicclerk CivicClerk (Rowlett, Garland). Uses the portal's public OData API.
+  docspublished  Docs Published / DocAssembler (Fort Worth). Reads the public API's meeting
+             list and each agenda's sections, items and attachment titles.
   civicweb   iCompass/Diligent CivicWeb (Dallas County). Walks the Document Center's
              Agendas folder: meeting type → year → "<Meeting> - <Mon DD YYYY> - Agenda - Html|Pdf".
   doc_table  A page with one table row per meeting and a column per document
@@ -16,8 +18,9 @@ Each source returns Document objects; the runner downloads and searches them.
 from __future__ import annotations
 
 import re
+import time
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from urllib.parse import unquote, urljoin, urlparse
 
 from bs4 import BeautifulSoup
@@ -219,6 +222,7 @@ class LinkPageSource(Source):
     link_text_pattern: str | None = None
     follow_pattern: str | None = None
     meeting_name: str | None = None   # use this instead of guessing the meeting name from the page
+    skip_undated: bool = False        # ignore links with no date (e.g. old archive files)
     months_back: int = 1
     max_links: int = 60
     platform: str = "web page"
@@ -293,6 +297,8 @@ class LinkPageSource(Source):
                 break
             row_text = ctx.split(" || ")[0]
             mdate = parse_date(row_text) or parse_date(unquote(href))
+            if mdate is None and self.skip_undated:
+                continue
             if self.meeting_name:
                 body = self.meeting_name
             else:
@@ -358,6 +364,95 @@ class CivicClerkSource(Source):
                 break
         else:
             self.notes.append(f"Stopped after {self.max_pages} pages of events")
+        return docs
+
+
+# ---------------------------------------------------------------- Docs Published
+def _to_local(utc_iso: str | None, tz_name: str) -> date | None:
+    """Docs Published gives meeting times in UTC ("2026-11-11T00:00:00" is Nov 10, 6 pm Central)."""
+    if not utc_iso:
+        return None
+    try:
+        dt = datetime.fromisoformat(utc_iso[:19]).replace(tzinfo=timezone.utc)
+    except ValueError:
+        return parse_date(utc_iso)
+    try:
+        from zoneinfo import ZoneInfo
+
+        return dt.astimezone(ZoneInfo(tz_name)).date()
+    except Exception:  # noqa: BLE001 - no tz database (some Windows installs): assume US Central
+        return (dt - timedelta(hours=6)).date()
+
+
+@dataclass
+class DocsPublishedSource(Source):
+    """https://docspublished.io/<org> portals, backed by https://api.docassembler.io/api.
+
+    The meeting list and each agenda's outline (sections, item titles, attachment titles)
+    come from the public API. Each agenda becomes one searchable text document; the
+    report links to the agenda's page on docspublished.io.
+    """
+
+    org: str = ""
+    api_base: str = "https://api.docassembler.io/api"
+    site_base: str = "https://docspublished.io"
+    document_types: list[str] = field(default_factory=lambda: ["Agenda"])
+    timezone: str = "America/Chicago"
+    attempts: int = 3                # the API drops connections now and then
+    platform: str = "Docs Published"
+
+    def _get(self, path: str):
+        last: Exception | None = None
+        for i in range(self.attempts):
+            try:
+                return self.http.get_json(f"{self.api_base}/{path}")
+            except FetchError as exc:
+                last = exc
+                if "couldn't connect" not in str(exc) and "timed out" not in str(exc):
+                    raise
+                time.sleep(2 * (i + 1))
+        raise last  # type: ignore[misc]
+
+    @staticmethod
+    def _outline(doc: dict) -> str:
+        lines = [doc.get("Title") or "", doc.get("MeetingType") or "",
+                 " ".join(filter(None, [doc.get("MeetingVenue"), doc.get("MeetingRoom"), doc.get("MeetingLocation")]))]
+        for sec in doc.get("WP_Sections") or []:
+            lines.append(f"{sec.get('Number') or ''} {sec.get('Title') or ''}".strip())
+            for it in sec.get("WP_Items") or []:
+                lines.append(f"  {it.get('Number') or ''} {it.get('Title') or ''}".rstrip())
+                for att in it.get("WP_Attachments") or []:
+                    if att.get("Title"):
+                        lines.append(f"      Attachment: {att['Title']}")
+        return "\n".join(line for line in lines if line.strip())
+
+    def list_documents(self, start: date, end: date) -> list[Document]:
+        org = self._get(f"organisation/{self.org}")
+        org_id = org.get("Id") if isinstance(org, dict) else None
+        if not org_id:
+            raise SourceError(f"Docs Published organisation '{self.org}' not found")
+        listing = self._get(f"documents/{org_id}")
+        if not isinstance(listing, list):
+            raise SourceError(f"Unexpected Docs Published response: {str(listing)[:200]}")
+        wanted = {t.lower() for t in self.document_types}
+        docs: list[Document] = []
+        for ev in listing:
+            dtype = ((ev.get("WP_DocumentType") or {}).get("Name") or "").lower()
+            doc_id = ev.get("AgendaDocumentId")
+            body = (ev.get("MeetingType") or "Meeting").strip()
+            mdate = _to_local(ev.get("MeetingDate"), self.timezone)
+            if dtype not in wanted or not doc_id or ev.get("IsArchived"):
+                continue
+            if not (_in_window(mdate, start, end) and _body_allowed(body, self.bodies)):
+                continue
+            try:
+                outline = self._outline(self._get(f"document/{doc_id}"))
+            except FetchError as exc:
+                self.notes.append(f"Couldn't read {ev.get('DocumentTitle') or body}: {exc}")
+                continue
+            page = f"{self.site_base}/{self.org}/document/{doc_id}"
+            docs.append(Document(self.name, self.city, body, mdate, f"{body} agenda", page, "items", page,
+                                 inline_text=outline))
         return docs
 
 
@@ -528,6 +623,8 @@ def build_sources(specs: list[dict], http: Http) -> list[Source]:
             sources.append(LinkPageSource(**common, **spec))
         elif kind == "civicclerk":
             sources.append(CivicClerkSource(**common, **spec))
+        elif kind == "docspublished":
+            sources.append(DocsPublishedSource(**common, **spec))
         elif kind == "civicweb":
             sources.append(CivicWebSource(**common, **spec))
         elif kind == "doc_table":

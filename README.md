@@ -24,6 +24,12 @@ Checks North Texas agenda sites every day, searches each agenda for your key ter
 | Lewisville | Legistar (`cityoflewisville`) | same |
 | Highland Village | CivicPlus Archive Center | City Council and special meeting agenda PDFs |
 
+**Trinity Metro member cities**
+
+| City | Platform | How it's read |
+|---|---|---|
+| Fort Worth | Docs Published (`fortworthtexas`) | public API → each agenda's sections, item titles and attachment titles (moved from Legistar in June 2026) |
+
 **Regional**
 
 | Body | Platform | How it's read |
@@ -31,7 +37,7 @@ Checks North Texas agenda sites every day, searches each agenda for your key ter
 | Regional Transportation Council | NCTCOG RTC page | agenda + full meeting packet PDFs |
 | Dallas County | CivicWeb Commissioners Court | HTML agenda + full PDF with briefings, from the Document Center |
 
-Terms: DART, Dallas Area Rapid Transit, Transit, GMP, General Mobility Program, DCTA, Denton County Transportation Authority, Streetcar.
+Terms: DART, Dallas Area Rapid Transit, Transit, GMP, General Mobility Program, DCTA, Denton County Transportation Authority, Trinity Metro, Streetcar.
 
 ## Setup (once)
 
@@ -64,7 +70,7 @@ python agenda_watch.py run --backfill 90 --open
 python agenda_watch.py run --open
 ```
 
-The report is saved to `reports/agenda-report-YYYY-MM-DD.html`, and `reports/latest.html` always holds the newest one. It has a block for each section (DART member cities, DCTA member cities, Regional), each with:
+The report is saved to `reports/agenda-report-YYYY-MM-DD.html`, and `reports/latest.html` always holds the newest one. It has a block for each section (DART member cities, DCTA member cities, Trinity Metro member cities, Regional), each with:
 
 - **New mentions** — matches not seen in any earlier report, grouped by meeting, with the surrounding text and a link that opens the PDF at the right page.
 - **Upcoming meetings that mention your terms** — every posted future agenda with a match, new or not.
