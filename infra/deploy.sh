@@ -29,6 +29,13 @@ done
 
 az group create -n "$RESOURCE_GROUP" -l "$LOCATION" --tags app=agendawatch -o none
 
+# GitHub's numeric owner/repo IDs, for the immutable-ID OIDC subject (needs the gh CLI).
+GITHUB_OWNER_ID="${GITHUB_OWNER_ID:-}"; GITHUB_REPO_ID="${GITHUB_REPO_ID:-}"
+if [ -z "$GITHUB_REPO_ID" ] && command -v gh >/dev/null; then
+  read -r GITHUB_OWNER_ID GITHUB_REPO_ID < <(gh api "repos/$GITHUB_REPO" --jq '"\(.owner.id) \(.id)"' 2>/dev/null || echo "")
+fi
+[ -z "$GITHUB_REPO_ID" ] && echo "Note: couldn't look up GitHub repo IDs; only the classic OIDC subject is registered."
+
 # Keep the current image if the job already exists.
 IMAGE="${IMAGE:-$(az containerapp job list -g "$RESOURCE_GROUP" --query "[?ends_with(name,'-daily')].properties.template.containers[0].image | [0]" -o tsv 2>/dev/null || true)}"
 image_args=()
@@ -37,6 +44,7 @@ echo "Deploying to $RESOURCE_GROUP ($LOCATION); image: ${IMAGE:-placeholder}"
 
 out="$(az deployment group create -g "$RESOURCE_GROUP" -n agendawatch -f "$HERE/main.bicep" \
   -p alertEmail="$ALERT_EMAIL" scheduleCron="$SCHEDULE_CRON" siteUrl="$SITE_URL" githubRepo="$GITHUB_REPO" \
+     githubOwnerId="$GITHUB_OWNER_ID" githubRepoId="$GITHUB_REPO_ID" \
   "${image_args[@]}" --query properties.outputs -o json)"
 
 get() { echo "$out" | python3 -c "import json,sys; print(json.load(sys.stdin)['$1']['value'])"; }

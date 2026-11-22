@@ -37,6 +37,10 @@ param githubRepo string = 'patmorgan235/AgendaWatch'
 @description('Branch allowed to deploy.')
 param githubBranch string = 'main'
 
+@description('GitHub owner and repository numeric IDs. GitHub issues OIDC subjects in the immutable-ID form "repo:owner@ownerId/name@repoId:ref:…" for newer repositories; deploy.sh looks these up with the gh CLI. Empty = only the classic subject is registered.')
+param githubOwnerId string = ''
+param githubRepoId string = ''
+
 @description('Email address for failure alerts. Empty = no alert.')
 param alertEmail string = ''
 
@@ -113,6 +117,21 @@ resource githubFederation 'Microsoft.ManagedIdentity/userAssignedIdentities/fede
     subject: 'repo:${githubRepo}:ref:refs/heads/${githubBranch}'
     audiences: [ 'api://AzureADTokenExchange' ]
   }
+}
+
+// The same branch in the immutable-ID subject format. Federated credentials on one identity must be
+// written one at a time, hence the dependsOn.
+var githubOwner = split(githubRepo, '/')[0]
+var githubName = split(githubRepo, '/')[1]
+resource githubFederationById 'Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials@2023-01-31' = if (!empty(githubOwnerId) && !empty(githubRepoId)) {
+  parent: deployIdentity
+  name: 'github-${githubBranch}-ids'
+  properties: {
+    issuer: 'https://token.actions.githubusercontent.com'
+    subject: 'repo:${githubOwner}@${githubOwnerId}/${githubName}@${githubRepoId}:ref:refs/heads/${githubBranch}'
+    audiences: [ 'api://AzureADTokenExchange' ]
+  }
+  dependsOn: [ githubFederation ]
 }
 
 resource jobBlobAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
