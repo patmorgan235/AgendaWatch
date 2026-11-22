@@ -29,6 +29,11 @@ def test_trinity_metro():
     assert names("Interlocal agreement with Trinity\nMetro for TEXRail")["Trinity Metro"] == 1
 
 
+def test_paratransit_variants():
+    counts = names("ACCESS paratransit contract; para-transit eligibility; Para Transit van")
+    assert counts["Paratransit"] == 3
+
+
 def test_full_name_across_line_break():
     c = names("agreement with the Dallas Area\nRapid   Transit authority")
     assert c["Dallas Area Rapid Transit"] == 1

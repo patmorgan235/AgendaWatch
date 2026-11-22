@@ -33,6 +33,9 @@ terms:
     case_sensitive: true
   - name: Denton County Transportation Authority
   - name: Trinity Metro
+  - name: Paratransit
+    pattern: 'para[\s\-]?transit'   # paratransit, para-transit, para transit
+    regex: true
   - name: Streetcar
     pattern: 'street[\s\-]?cars?'   # street car, streetcar, street-car, streetcars
     regex: true
@@ -43,6 +46,7 @@ terms:
 # type: link_page — any page linking to agendas; link_pattern picks which links are agendas
 # type: civicclerk — tenant is the name before .portal.civicclerk.com
 # type: docspublished — org is the name after docspublished.io/
+# type: granicus  — url is a Granicus ViewPublisher.php?view_id=N page
 # type: civicweb  — base_url is the CivicWeb site; meeting_types names folders under Document Center → Agendas
 # type: doc_table — a page with a table row per meeting; columns names which document columns to read
 # Optional on any source:  section: "DCTA member cities"  (groups sources in the report, in config order)
@@ -147,13 +151,49 @@ sources:
     max_links: 40
     section: DCTA member cities
 
-  # ---------------------------------------------------------------- Trinity Metro member cities
+  # ---------------------------------------------------------------- Trinity Metro member & associate cities
+  # Fort Worth is the full (sales-tax) member; the others have partial/associate
+  # membership through interlocal agreements (TEXRail stations, On-Demand, paratransit).
   - name: Fort Worth
     type: docspublished
     org: fortworthtexas      # moved from Legistar (fortworthgov) on June 17, 2026
     # Reads each agenda's sections, item titles and attachment titles. The full agenda
     # PDFs (100-350 MB) aren't available through the public API.
-    section: Trinity Metro member cities
+    section: Trinity Metro member & associate cities
+
+  - name: Grapevine
+    type: link_page
+    # CivicPlus Archive Center: 48 = City Council agendas, 52 = City Council packets.
+    urls:
+      - https://www.grapevinetexas.gov/Archive.aspx?AMID=48
+      - https://www.grapevinetexas.gov/Archive.aspx?AMID=52
+    link_pattern: 'Archive\.aspx\?ADID=\d+'
+    link_text_pattern: '^(?!.*(cancel|no meeting))'
+    meeting_name: City Council
+    skip_undated: true
+    max_links: 40
+    section: Trinity Metro member & associate cities
+
+  - name: North Richland Hills
+    type: legistar
+    client: nrhtx
+    section: Trinity Metro member & associate cities
+
+  - name: Forest Hill
+    type: civicclerk
+    tenant: foresthilltx
+    section: Trinity Metro member & associate cities
+
+  - name: River Oaks
+    type: link_page
+    # CivicPlus Agenda Center; links look like /AgendaCenter/ViewFile/Agenda/_11172026-421
+    urls:
+      - https://www.riveroakstx.com/AgendaCenter
+    link_pattern: '/AgendaCenter/ViewFile/Agenda/_\d{8}-\d+'
+    exclude_pattern: 'municipal court'   # court dockets aren't meeting agendas
+    skip_undated: true
+    max_links: 40
+    section: Trinity Metro member & associate cities
 
   # ---------------------------------------------------------------- regional bodies
   - name: RTC (NCTCOG)
@@ -170,11 +210,34 @@ sources:
     skip_undated: true        # 2022-23 archive files have no usable date in their names
     max_links: 60
 
+  # ---------------------------------------------------------------- counties
   - name: Dallas County
-    section: Regional
+    section: Counties
     type: civicweb
     base_url: https://dallascounty.civicweb.net
     meeting_types: ["Commissioners Court", "Commissioners Court - Special Called Session"]
     # html = agenda item titles (~200 KB, available right away); pdf = the full agenda with
     # every briefing (often 100+ MB, ~3 min to read; needs max_download_mb above its size).
     format: both
+
+  - name: Collin County
+    type: link_page
+    # eAgenda portal (same software as Addison). Each meeting's page is the full agenda with
+    # item descriptions, so read those pages rather than the hundreds of attachment PDFs.
+    urls:
+      - https://eagenda.collincountytx.gov/agenda_publish.cfm
+      - https://eagenda.collincountytx.gov/agenda_publish.cfm?id=&mt=ALL&get_month={month}&get_year={year}&dsp=ag&seq=
+    months_back: 1
+    link_pattern: 'agenda_publish\.cfm\?.*dsp=ag&seq=\d+'
+    skip_undated: true
+    max_links: 30
+    section: Counties
+
+  - name: Denton County
+    type: granicus
+    # Commissioners Court agendas go up under "Upcoming Events" before each meeting.
+    url: https://dentoncounty.granicus.com/ViewPublisher.php?view_id=26
+    section: Counties
+
+  # Tarrant County: its agendas are only in an AgendaLink portal whose API needs a token
+  # embedded in the app, so it isn't read here. See README.

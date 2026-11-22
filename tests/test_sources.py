@@ -1,7 +1,7 @@
 from datetime import date
 
 from agendawatch.http import FetchError
-from agendawatch.sources import CivicClerkSource, CivicWebSource, DocsPublishedSource, DocTableSource, LegistarSource, LinkPageSource, NovusSource, build_sources
+from agendawatch.sources import CivicClerkSource, CivicWebSource, DocsPublishedSource, GranicusSource, DocTableSource, LegistarSource, LinkPageSource, NovusSource, build_sources
 
 from helpers import FakeHttp
 
@@ -209,6 +209,8 @@ def test_civicclerk_events_and_paging():
     page2 = {"value": [
         {"id": 111, "eventName": "Parks Board", "categoryName": "Boards",
          "startDateTime": "2026-12-03T18:00:00Z", "publishedFiles": [{"fileId": 9, "type": "Agenda"}]},
+        {"id": 112, "eventName": "Cancelled No Quorum_Zoning Board of Adjustment", "categoryName": "Boards",
+         "startDateTime": "2026-12-04T18:00:00Z", "publishedFiles": [{"fileId": 10, "type": "Agenda"}]},
     ]}
     http = FakeHttp({f"{api}/Events": page1, f"{api}/Events?$skip=2": page2})
     src = CivicClerkSource(name="Rowlett", city="Rowlett", http=http, tenant="rowletttx")
@@ -314,3 +316,40 @@ def test_docs_published_outline_and_utc_dates():
     assert d.url == "https://docspublished.io/fortworthtexas/document/a1" and d.kind == "items"
     assert "9.1 Interlocal agreement with Trinity Metro for TEXRail" in d.inline_text
     assert "Attachment: Trinity Metro ILA exhibit" in d.inline_text
+
+
+def test_link_page_exclude_pattern_checks_the_row():
+    url = "https://ro.example/AgendaCenter"
+    page = """<table>
+    <tr><td><strong>City Council Meeting</strong></td><td><a href="/AgendaCenter/ViewFile/Agenda/_11172026-421">Nov 17</a></td></tr>
+    <tr><td><strong>Municipal Court Docket 11-12-2026</strong></td><td><a href="/AgendaCenter/ViewFile/Agenda/_11122026-420">Nov 12</a></td></tr>
+    </table>"""
+    src = LinkPageSource(name="RO", city="RO", http=FakeHttp({url: page}), urls=[url],
+                         link_pattern=r"/AgendaCenter/ViewFile/Agenda/_\d{8}-\d+", exclude_pattern="municipal court")
+    docs = src.list_documents(START, END)
+    assert [(d.meeting_date, d.body) for d in docs] == [(date(2026, 11, 17), "City Council Meeting Nov 17")]
+
+
+GRANICUS = """<div id="upcoming"><table class="listingTable">
+<tr><th>Name</th><th>Date</th><th></th></tr>
+<tr><td class="listItem">Commissioners Court</td><td class="listItem">Dec 1, 2026</td>
+ <td class="listItem"><a href="//dc.granicus.com/AgendaViewer.php?view_id=26&event_id=812">Agenda</a></td></tr>
+</table></div>
+<table class="listingTable">
+<tr><td class="listItem">Commissioners Court</td><td class="listItem"><span style="display:none;">1794902400</span>Nov 17, 2026</td>
+ <td class="listItem"><select name="multiDocSelect"><option selected disabled>Documents...</option>
+ <option value="//dc.granicus.com/AgendaViewer.php?view_id=26&clip_id=2102">Agenda</option>
+ <option value="//dc.granicus.com/MinutesViewer.php?view_id=26&clip_id=2102&doc_id=x">11-17-26</option></select></td></tr>
+<tr><td class="listItem">Commissioners Court</td><td class="listItem">Mar 4, 2025</td>
+ <td class="listItem"><select><option value="//dc.granicus.com/AgendaViewer.php?view_id=26&clip_id=1500">Agenda</option></select></td></tr>
+</table>"""
+
+
+def test_granicus_upcoming_and_archived():
+    url = "https://dc.granicus.com/ViewPublisher.php?view_id=26"
+    src = GranicusSource(name="Denton County", city="Denton County", http=FakeHttp({url: GRANICUS}), url=url)
+    docs = src.list_documents(START, END)
+    assert [(d.meeting_date, d.body, d.url) for d in docs] == [
+        (date(2026, 12, 1), "Commissioners Court", "https://dc.granicus.com/AgendaViewer.php?view_id=26&event_id=812"),
+        (date(2026, 11, 17), "Commissioners Court", "https://dc.granicus.com/AgendaViewer.php?view_id=26&clip_id=2102"),
+    ]  # minutes ignored, 2025 meeting outside the window

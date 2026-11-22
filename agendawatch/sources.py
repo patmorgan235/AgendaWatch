@@ -9,6 +9,8 @@ Each source returns Document objects; the runner downloads and searches them.
   civicclerk CivicClerk (Rowlett, Garland). Uses the portal's public OData API.
   docspublished  Docs Published / DocAssembler (Fort Worth). Reads the public API's meeting
              list and each agenda's sections, items and attachment titles.
+  granicus   Granicus ViewPublisher pages (Denton County): upcoming and archived meetings,
+             agenda via AgendaViewer.php.
   civicweb   iCompass/Diligent CivicWeb (Dallas County). Walks the Document Center's
              Agendas folder: meeting type → year → "<Meeting> - <Mon DD YYYY> - Agenda - Html|Pdf".
   doc_table  A page with one table row per meeting and a column per document
@@ -223,6 +225,7 @@ class LinkPageSource(Source):
     follow_pattern: str | None = None
     meeting_name: str | None = None   # use this instead of guessing the meeting name from the page
     skip_undated: bool = False        # ignore links with no date (e.g. old archive files)
+    exclude_pattern: str | None = None  # skip links whose table row / list item matches this
     months_back: int = 1
     max_links: int = 60
     platform: str = "web page"
@@ -296,13 +299,16 @@ class LinkPageSource(Source):
                 self.notes.append(f"Stopped at {self.max_links} agendas (max_links)")
                 break
             row_text = ctx.split(" || ")[0]
+            if self.exclude_pattern and re.search(self.exclude_pattern, ctx, re.I):
+                continue
             mdate = parse_date(row_text) or parse_date(unquote(href))
             if mdate is None and self.skip_undated:
                 continue
             if self.meeting_name:
                 body = self.meeting_name
             else:
-                body = re.sub(r"\b(Video|Agenda|Minutes|Packet|Download)\b", "", row_text)
+                body = re.sub(r"\b(Video|Agenda|Minutes|Packet|Download|Previous Versions)\b|▼", "", row_text)
+                body = re.sub(r"\b\d{1,2}-\d{1,2}-\d{4}\b", "", body)
                 body = re.sub(r"[A-Za-z]{3,9}\.? \d{1,2},? \d{4}|\d{1,2}/\d{1,2}/\d{2,4}|\d{1,2}h \d{2}m|\d{1,2}m \d{2}s", "", body)
                 body = re.sub(r"\s+", " ", body).strip(" -|·") or "Meeting"
                 body = body[:80]
@@ -347,6 +353,8 @@ class CivicClerkSource(Source):
                 name = (ev.get("eventName") or ev.get("agendaName") or "Meeting").strip()
                 category = (ev.get("categoryName") or ev.get("eventCategoryName") or "").strip()
                 if not _body_allowed(f"{category} {name}", self.bodies):
+                    continue
+                if re.search(r"\bcancel+ed\b", name, re.I):
                     continue
                 # Times are local wall-clock times labelled Z, so the date part is the meeting date.
                 mdate = parse_date(ev.get("startDateTime") or ev.get("eventDate"))
@@ -454,6 +462,44 @@ class DocsPublishedSource(Source):
             docs.append(Document(self.name, self.city, body, mdate, f"{body} agenda", page, "items", page,
                                  inline_text=outline))
         return docs
+
+
+# ---------------------------------------------------------------- Granicus ViewPublisher
+@dataclass
+class GranicusSource(Source):
+    """https://<name>.granicus.com/ViewPublisher.php?view_id=N
+
+    Lists "Upcoming Events" (agenda link: AgendaViewer.php?...&event_id=) and archived
+    meetings (agenda in a Documents dropdown: AgendaViewer.php?...&clip_id=). AgendaViewer
+    returns the agenda as HTML or PDF.
+    """
+
+    url: str = ""
+    platform: str = "Granicus"
+
+    _AGENDA = re.compile(r"AgendaViewer\.php\?[^\"'\s>]*", re.I)
+
+    def list_documents(self, start: date, end: date) -> list[Document]:
+        html = self.http.get_text(self.url)
+        soup = BeautifulSoup(html, "html.parser")
+        docs: dict[str, Document] = {}
+        for row in soup.find_all("tr"):
+            cells = row.find_all("td")
+            if len(cells) < 2:
+                continue
+            targets = [a.get("href", "") for a in row.find_all("a")] + [o.get("value", "") for o in row.find_all("option")]
+            agenda = next((t for t in targets if self._AGENDA.search(t)), None)
+            if not agenda:
+                continue
+            body = re.sub(r"\s+", " ", cells[0].get_text(" ", strip=True)) or "Meeting"
+            mdate = parse_date(cells[1].get_text(" ", strip=True)) or parse_date(row.get_text(" ", strip=True))
+            if mdate is None or not _in_window(mdate, start, end) or not _body_allowed(body, self.bodies):
+                continue
+            href = urljoin(self.url, agenda)
+            docs.setdefault(href, Document(self.name, self.city, body, mdate, f"{body} agenda", href, "agenda", self.url))
+        if not docs and "listingTable" not in html:
+            raise SourceError("No Granicus meeting table found on the page")
+        return list(docs.values())
 
 
 # ---------------------------------------------------------------- CivicWeb
@@ -625,6 +671,8 @@ def build_sources(specs: list[dict], http: Http) -> list[Source]:
             sources.append(CivicClerkSource(**common, **spec))
         elif kind == "docspublished":
             sources.append(DocsPublishedSource(**common, **spec))
+        elif kind == "granicus":
+            sources.append(GranicusSource(**common, **spec))
         elif kind == "civicweb":
             sources.append(CivicWebSource(**common, **spec))
         elif kind == "doc_table":
