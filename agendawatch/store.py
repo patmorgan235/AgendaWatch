@@ -131,6 +131,18 @@ class Store:
             (start.isoformat(), end.isoformat(), start.isoformat()),
         ).fetchall()
 
+    def prune_pages(self, before: date) -> int:
+        """Drop stored page text for agendas of meetings before `before` (matches are kept).
+        Returns how many agendas were pruned. Shrinks the file with VACUUM when anything went."""
+        urls = [r["url"] for r in self.db.execute(
+            """SELECT DISTINCT p.url FROM pages p JOIN documents d ON d.url = p.url
+               WHERE d.meeting_date IS NOT NULL AND d.meeting_date < ?""", (before.isoformat(),))]
+        if urls:
+            self.db.executemany("DELETE FROM pages WHERE url=?", [(u,) for u in urls])
+            self.db.commit()
+            self.db.execute("VACUUM")
+        return len(urls)
+
     def run_started(self, run_id: int) -> str | None:
         row = self.db.execute("SELECT started FROM runs WHERE id=?", (run_id,)).fetchone()
         return row["started"] if row else None

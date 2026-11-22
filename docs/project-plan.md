@@ -127,18 +127,26 @@ so it came first.
 
 **Done when:** running the tool twice in a row still shows every in-window match; the upcoming-only filter works; the feeds validate.
 
-### Phase 2 — Packaging
+### Phase 2 — Packaging ✅ done Nov 22, 2026
 
-- [ ] Dockerfile (Python 3.12, optional `ocrmypdf` and Tesseract).
-- [ ] Storage interface with `local`, `azure-blob` and `s3` backends, selected by environment variable.
-- [ ] Run lock: an Azure blob lease, or a lock object on S3.
-- [ ] All settings overridable by environment variables (storage, schedule window, size limits).
-- [ ] **Database growth:**
-  - drop or compress page text for meetings older than N days (configurable);
-  - keep the matches indefinitely.
-- [ ] Structured logging: one summary line per source, with a non-zero exit code if every source fails.
+- [x] `Dockerfile` (python:3.12-slim, non-root user, optional `ocrmypdf` with `--build-arg WITH_OCR=true`), about 200 MB. The default command is `job`.
+- [x] Storage interface (`agendawatch/storage.py`) with `local`, `azure` (Blob, managed identity) and `s3` (any S3-compatible) backends, selected by `AGENDAWATCH_STORAGE`.
+- [x] Run lock: an Azure blob lease, an S3 conditional put, or a local exclusive file. A lock older than `AGENDAWATCH_LOCK_TTL_HOURS` (default 4) is taken over.
+- [x] Every `settings:` value can be overridden with `AGENDAWATCH_SETTING_<NAME>`; the config path with `AGENDAWATCH_CONFIG`.
+- [x] Database growth: `page_retention_days` drops page text for older meetings and compacts the file; matches are always kept.
+- [x] JSON log lines (`AGENDAWATCH_LOG_FORMAT=json`, the image default), with one summary line per source and a run summary.
+- [x] Exit codes:
+  - `0` — success, even when some sources fail; the Hurst 403 from Azure shouldn't page anyone daily.
+  - `3` — every source failed.
+  - `75` — the run lock is held.
+  - `1` — unexpected error.
 
-**Done when:** `docker run` with local storage produces the same site as a local run, and the database stays under a set size budget.
+**Verified:**
+- The image built with Podman and ran `job` twice against three live sources (Plano on Legistar, Rowlett on CivicClerk, Fort Worth on Docs Published) with local storage.
+- Run 1 started a fresh database and published the site (30 seconds).
+- Run 2 reused the stored database, found nothing new, and still published the same meetings, marked not new (18 seconds).
+- Feed links use `site_url`.
+- The Azure and S3 backends are tested only against fake clients so far. The Azure backend gets its first real test in Phase 3.
 
 ### Phase 3 — Azure deployment
 

@@ -12,6 +12,8 @@ settings:
   ocr: auto                  # auto = OCR scanned PDFs if ocrmypdf is installed; off = never
   snippet_chars: 140         # context shown on each side of a match
   max_snippets_per_term: 5   # per agenda, so one long packet doesn't flood the report
+  page_retention_days: 0     # drop stored page text for meetings older than this (0 = keep all;
+                             # matches are always kept). Hosted runs set 90 to keep the database small.
 
 # ------------------------------------------------------------------ key terms
 # Plain phrases match whole words, ignore case, and tolerate line breaks inside the phrase.

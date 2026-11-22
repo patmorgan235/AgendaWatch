@@ -161,6 +161,34 @@ schtasks /create /tn "Agenda Watch" /sc daily /st 06:43 /tr "C:\path\to\agenda-w
 
 The computer must be on at that time. Open `reports/index.html` (bookmark it) whenever you want the latest report.
 
+## Hosted runs (container)
+
+`python agenda_watch.py job` is the hosted version of `run`: it takes a run lock, downloads the database from storage, runs, saves the database, publishes the site files, and releases the lock. The `Dockerfile` builds an image whose default command is `job`.
+
+```bash
+podman build -t agendawatch .                        # or docker; add --build-arg WITH_OCR=true for scanned PDFs
+podman run --rm -v ./hosted:/data -e AGENDAWATCH_LOCAL_DIR=/data agendawatch
+```
+
+Storage is picked with `AGENDAWATCH_STORAGE`:
+
+| Value | Settings | State (database) | Site |
+|---|---|---|---|
+| `local` (default) | `AGENDAWATCH_LOCAL_DIR` (default `hosted`) | `<dir>/state/` | `<dir>/site/` |
+| `azure` | `AGENDAWATCH_AZURE_ACCOUNT_URL` (or `AZURE_STORAGE_CONNECTION_STRING`), `AGENDAWATCH_AZURE_CLIENT_ID` for a user-assigned managed identity, `AGENDAWATCH_AZURE_STATE_CONTAINER` (default `state`), `AGENDAWATCH_AZURE_SITE_CONTAINER` (default `$web`) | private container | static website container |
+| `s3` | `AGENDAWATCH_S3_STATE_BUCKET`, `AGENDAWATCH_S3_SITE_BUCKET`, optional `AGENDAWATCH_S3_ENDPOINT_URL` (R2, B2, MinIO) and `_STATE_PREFIX` / `_SITE_PREFIX` | bucket | bucket |
+
+Other environment variables:
+
+- `AGENDAWATCH_SETTING_<NAME>` overrides any `settings:` value in `config.yaml`, parsed as YAML, e.g. `AGENDAWATCH_SETTING_SITE_URL=https://agendas.example.org`, `AGENDAWATCH_SETTING_PAGE_RETENTION_DAYS=90`.
+- `AGENDAWATCH_CONFIG`: path to the config file (the image uses its built-in copy).
+- `AGENDAWATCH_LOG_FORMAT=json`: one JSON object per log line (the image's default), including a summary line per source.
+- `AGENDAWATCH_LOCK_TTL_HOURS` (default 4): a lock older than this is assumed to be left by a crashed run and taken over.
+
+Exit codes: `0` success (even if some sources couldn't be read; they're listed in the logs and the report), `3` every source failed (likely a network problem), `75` another run still holds the lock, `1` unexpected error.
+
+To keep the hosted database small, set `page_retention_days` (e.g. 90): stored page text for older meetings is dropped and the file compacted. Matches are always kept, and dropped agendas aren't downloaded again.
+
 ## Changing terms or cities
 
 Everything is in `config.yaml`.
@@ -196,6 +224,8 @@ agendawatch/store.py     SQLite: agendas read, page text, matches already report
 agendawatch/site.py      data.json, report page, Atom and calendar feeds
 agendawatch/site_template.html  the report page (filters run in the browser)
 agendawatch/report.py    writes the site; console summary
+agendawatch/job.py       hosted run: lock, fetch database, run, save, publish
+agendawatch/storage.py   local, Azure Blob and S3-compatible storage + run lock
 tests/                   pytest suite with fixtures modeled on each platform's pages
 ```
 

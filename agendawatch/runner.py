@@ -132,6 +132,15 @@ def run(config: dict, backfill_days: int | None = None, http: Http | None = None
             for doc in docs:
                 _process(doc, store, http, terms, settings, run_id, st, today)
         store.finish_run(run_id)
+        for st in statuses:
+            log.info(
+                "source %s: listed=%d read=%d unchanged=%d skipped=%d failed=%d new=%d%s",
+                st.name, st.listed, st.read, st.unchanged, st.skipped, st.failed, st.new_matches,
+                f" error={st.error}" if st.error else "",
+                extra={"fields": {"event": "source", "source": st.name, "section": st.section, "listed": st.listed,
+                                  "read": st.read, "unchanged": st.unchanged, "skipped": st.skipped,
+                                  "failed": st.failed, "new_matches": st.new_matches, "error": st.error or None}},
+            )
         return RunResult(
             run_id=run_id, start=start, end=end, statuses=statuses,
             new_matches=store.matches_for_run(run_id),

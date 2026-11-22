@@ -5,12 +5,14 @@
   python agenda_watch.py run --backfill 90   first run: also look back 90 days
   python agenda_watch.py check            show what each city's source finds (no downloads)
   python agenda_watch.py search "bus rapid transit"   search every agenda already downloaded
+  python agenda_watch.py job              hosted run: database and site in cloud storage (see README)
 """
 
 from __future__ import annotations
 
 import argparse
 import logging
+import os
 import re
 import sys
 import webbrowser
@@ -68,6 +70,14 @@ def cmd_check(args, cfg) -> int:
     return 2 if bad else 0
 
 
+def cmd_job(args, cfg) -> int:
+    from agendawatch.job import apply_env_overrides, run_job
+    from agendawatch.storage import storage_from_env
+
+    apply_env_overrides(cfg)
+    return run_job(cfg, storage_from_env())
+
+
 def cmd_search(args, cfg) -> int:
     store = Store(cfg["settings"]["database"])
     if args.regex:
@@ -91,7 +101,8 @@ def cmd_search(args, cfg) -> int:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--config", default="config.yaml", help="path to config.yaml")
+    ap.add_argument("--config", default=os.environ.get("AGENDAWATCH_CONFIG", "config.yaml"),
+                    help="path to config.yaml (or set AGENDAWATCH_CONFIG)")
     ap.add_argument("-q", "--quiet", action="store_true", help="only print the summary")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
@@ -100,6 +111,7 @@ def main(argv=None) -> int:
     p_run.add_argument("--open", action="store_true", help="open the report in your browser when done")
 
     sub.add_parser("check", help="test each source without downloading agendas")
+    sub.add_parser("job", help="hosted run: fetch the database from storage, run, publish the site")
 
     p_s = sub.add_parser("search", help="search agendas already downloaded")
     p_s.add_argument("query")
@@ -109,12 +121,20 @@ def main(argv=None) -> int:
     p_s.add_argument("--limit", type=int, default=100)
 
     args = ap.parse_args(argv)
-    logging.basicConfig(level=logging.WARNING if args.quiet else logging.INFO, format="%(message)s")
+    level = logging.WARNING if args.quiet else logging.INFO
+    if os.environ.get("AGENDAWATCH_LOG_FORMAT", "").lower() == "json":
+        from agendawatch.job import JsonFormatter
+
+        handler = logging.StreamHandler()
+        handler.setFormatter(JsonFormatter())
+        logging.basicConfig(level=level, handlers=[handler])
+    else:
+        logging.basicConfig(level=level, format="%(message)s")
     logging.getLogger("urllib3").setLevel(logging.ERROR)
     for noisy in ("httpx", "httpcore", "hpack", "h2"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
     cfg = load_config(args.config)
-    return {"run": cmd_run, "check": cmd_check, "search": cmd_search}[args.cmd](args, cfg)
+    return {"run": cmd_run, "check": cmd_check, "search": cmd_search, "job": cmd_job}[args.cmd](args, cfg)
 
 
 if __name__ == "__main__":
