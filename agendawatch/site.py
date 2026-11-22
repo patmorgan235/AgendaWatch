@@ -80,7 +80,7 @@ def build_data(res: RunResult, terms: list[str], site_url: str | None = None) ->
     sources = [{
         "name": s.name, "city": s.city, "section": s.section or OTHER, "platform": s.platform,
         "listed": s.listed, "read": s.read, "unchanged": s.unchanged, "skipped": s.skipped,
-        "failed": s.failed, "new_matches": s.new_matches, "error": s.error, "notes": s.notes[:4],
+        "failed": s.failed, "new_matches": s.new_matches, "error": s.error, "notes": s.notes[:5],
     } for s in res.statuses]
     return {
         "generated": datetime.now().isoformat(timespec="seconds"),

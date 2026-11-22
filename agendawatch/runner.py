@@ -116,6 +116,8 @@ def run(config: dict, backfill_days: int | None = None, http: Http | None = None
         for src in sources:
             st = SourceStatus(src.name, src.city, src.platform, section=src.section)
             statuses.append(st)
+            if src.note:
+                st.notes.append(src.note)
             log.info("%s (%s)", src.name, src.platform)
             try:
                 docs = src.list_documents(start, end)

@@ -87,9 +87,11 @@ sources:
     section: DART member cities
     city: Richardson
     type: link_page
-    enabled: false
-    # Backup, and covers Planning Commission and other meetings. Swagit lists a meeting
-    # around when it's held, so anything here is usually already caught by cor.net above.
+    # Fallback for cloud hosting: cor.net blocks data-center IPs (Akamai). Swagit is expected to
+    # work from Azure but wasn't part of the Phase 0 test; confirm on the first Azure run.
+    # Swagit lists a meeting around when it's held, so alerts from here come late; when
+    # cor.net is readable (e.g. from a home connection) it catches the same items first.
+    note: "Fallback for cor.net; agendas appear here around meeting day, so notice is short."
     urls:
       - https://richardsontx.new.swagit.com/views/614
     link_pattern: '/videos/\d+/agenda'
@@ -376,6 +378,9 @@ sources:
 
   - name: Hurst
     type: link_page       # table on the city's site (date | Agenda | Packet); eligible for Trinity Metro
+    # hursttx.gov blocks data-center IPs (Akamai), so this fails when run from Azure; no cloud
+    # fallback found (its Swagit listing stops in 2014). See the hybrid job in the backlog.
+    note: "Blocked from cloud hosting (HTTP 403); readable from a home connection."
     urls:
       - https://www.hursttx.gov/about-us/agendas-and-minutes/agendas-and-minutes-{year}
     months_back: 1

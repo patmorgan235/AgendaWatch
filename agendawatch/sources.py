@@ -69,6 +69,7 @@ class Source:
     notes: list[str] = field(default_factory=list)
     platform: str = "generic"
     section: str = ""                # report section, e.g. "DCTA member cities"
+    note: str = ""                   # shown in the report's Sources table (e.g. "fallback: posts late")
 
     def list_documents(self, start: date, end: date) -> list[Document]:  # pragma: no cover
         raise NotImplementedError
@@ -665,6 +666,7 @@ def build_sources(specs: list[dict], http: Http) -> list[Source]:
         city = spec.pop("city", name)
         bodies = spec.pop("bodies", []) or []
         section = str(spec.pop("section", "") or "")
+        note = str(spec.pop("note", "") or "")
         user_agent = spec.pop("user_agent", None)
         if user_agent:
             hosts = {urlparse(u).netloc for u in spec.get("urls", []) + [spec.get("base_url") or ""]}
@@ -673,7 +675,7 @@ def build_sources(specs: list[dict], http: Http) -> list[Source]:
                     http.set_browser_host(host)
                 else:
                     http.set_host_headers(host, {"User-Agent": str(user_agent)})
-        common = dict(name=name, city=city, http=http, bodies=bodies, section=section)
+        common = dict(name=name, city=city, http=http, bodies=bodies, section=section, note=note)
         if kind == "legistar":
             sources.append(LegistarSource(**common, **spec))
         elif kind == "novus":

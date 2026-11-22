@@ -11,7 +11,7 @@ Checks North Texas agenda sites every day, searches each agenda for your key ter
 | Carrollton | Legistar (`carrolltontx`) | same |
 | University Park | Legistar (`uptexas`) | same |
 | Plano | Legistar (`plano`) | same (moved from NovusAGENDA in July 2026) |
-| Richardson | cor.net Council Meeting Documents | agenda + packet PDFs, posted ~6 days ahead (Swagit video archive kept in config, disabled) |
+| Richardson | cor.net Council Meeting Documents, plus Swagit video archive | cor.net: agenda + packet PDFs ~6 days ahead (blocked from cloud hosting). Swagit: fallback that also covers boards and commissions, but lists meetings around meeting day |
 | Addison | Addison agenda portal | meeting pages → agenda packet PDFs |
 | Rowlett | CivicClerk (`rowletttx`) | CivicClerk API → agenda + packet PDFs |
 | Garland | CivicClerk (`garlandtx`) | same |
@@ -182,7 +182,7 @@ Some packets are scanned images with no text. The report notes these under Sourc
 - **A Legistar city shows "API unavailable"** — the tool falls back to the city's website calendar on its own, so this is usually just a note. If both fail, check that `https://<client>.legistar.com/Calendar.aspx` opens in your browser; if the city has moved platforms, update that source.
 - **University Park or Farmers Branch errors** — my evidence that these two still use Legistar was older than the others. If `check` fails, find "Agendas" on the city site, see where it leads, and adjust the source (or set `enabled: false`).
 - **Addison shows no agendas** — open `https://agendas.addisontx.gov/agenda_publish.cfm`, right-click an agenda packet link, copy its address, and make sure `link_pattern` matches it.
-- **Richardson (cor.net) shows HTTP 403 or "needs HTTP/2"** — cor.net turns away anything that doesn't look like a browser, so this source sends a browser User-Agent over HTTP/2 (`user_agent: browser`). Make sure `pip install -r requirements.txt` installed `httpx[http2]`. If it still gets 403, the city has tightened its bot filter; set `enabled: true` on the "Richardson (video archive)" source to fall back to Swagit, which works but only lists meetings around when they're held.
+- **Richardson (cor.net) shows HTTP 403 or "needs HTTP/2"** — cor.net turns away anything that doesn't look like a browser, so this source sends a browser User-Agent over HTTP/2 (`user_agent: browser`). Make sure `pip install -r requirements.txt` installed `httpx[http2]`. If it still gets 403, the city has tightened its bot filter; set `enabled: true` on the "Richardson (video archive)" source to fall back to Swagit, which works but only lists meetings around when they're held. From a cloud server (e.g. Azure) cor.net and hursttx.gov return 403 regardless — they block data-center addresses — so Richardson falls back to its Swagit archive and Hurst is skipped there.
 
 ## How it works
 

@@ -80,16 +80,32 @@ A searchable history of past agenda items is useful but secondary.
 
 ## Phases
 
-### Phase 0 — Cloud reachability test
+### Phase 0 — Cloud reachability test ✅ done Nov 22, 2026
 
 Government sites sometimes block data-center IP addresses. This could change the hosting plan,
-so it comes first.
+so it came first.
 
-- [ ] Build a throwaway container and run `agenda_watch.py check` once from Azure (Container Instances).
-- [ ] Compare the results source by source with a run from a home connection.
-- [ ] Decide: all of it on Azure, or a self-hosted runner for the scraping with the site still on Azure.
+- [x] Build a throwaway container and run the source check once from Azure Container Instances (Pay-As-You-Go subscription, South Central US).
+- [x] Compare the results source by source with a run from a home connection.
+- [x] Decide: all of it on Azure, or a self-hosted runner for the scraping with the site still on Azure.
 
-**Done when:** a table records which sources work from Azure, and the hosting decision is confirmed or revised.
+**Results** (42 sources; each test listed the source's agendas and downloaded its first one):
+
+| | Home connection | Azure, South Central US |
+|---|---|---|
+| Sources listed | 42 / 42 | 40 / 42 |
+| First downloads OK (where an agenda was in the window) | 37 / 37 | 35 / 35 |
+| Blocked | — | **Richardson** (cor.net) and **Hurst** (hursttx.gov): HTTP 403 from Akamai bot filtering; the browser-header mode doesn't help from a data-center address |
+
+**Decision:** host everything on Azure.
+
+- **Richardson:** the Swagit video archive is re-enabled as a fallback. It lists meetings around meeting day, so notice is shorter, but it also covers boards that cor.net's council page doesn't (for example, the Bicycle and Pedestrian Advisory Committee). Swagit wasn't part of the Azure test; confirm it on the first Azure run.
+- **Hurst:** no cloud fallback found. Its Swagit listing stops in 2014, and the current listing is on the blocked city site. It shows as an error in the Sources table until the hybrid job (backlog) exists.
+- **Asking the cities** to allowlist a User-Agent or IP: not pursued, as they're unlikely to change IT settings for one person.
+
+**Lessons for Phase 2:**
+- Anonymous Docker Hub pulls from Azure hit rate limits, so use Microsoft Container Registry base images or our own registry.
+- The test cost a few cents, and its resource group was deleted afterwards.
 
 ### Phase 1 — Report data and static site (local, no cloud) ✅ done Nov 22, 2026
 
@@ -152,6 +168,7 @@ so it comes first.
 
 ### Later
 
+- **Hybrid fetch for cloud-blocked sources:** a small job on a home connection fetches only the sources that block data-center IPs (Richardson's cor.net and Hurst today) and uploads their results to the same storage, restoring full lead time for them. It depends on that machine being on.
 - Searchable history: a static search page or a published read-only copy of the database.
 - Email or Slack alerts for new matches.
 - Ranking or triage: separate action items from passing mentions; reduce noise from broad terms such as "Transit".
@@ -160,8 +177,8 @@ so it comes first.
 
 | Risk or question | Mitigation or next step |
 |---|---|
-| Data-center IP addresses get blocked by city sites | Phase 0 test; fall back to a self-hosted runner for scraping. |
-| Browser mode for cor.net (Richardson) on a public service | Decide before launch: keep it, or ask Richardson to allow the tool's User-Agent. |
+| Data-center IP addresses get blocked by city sites | Phase 0: only Richardson (cor.net) and Hurst were blocked. Richardson falls back to Swagit; the hybrid fetch job is in the backlog. Re-check when adding sources. |
+| Browser mode for cor.net (Richardson) on a public service | Moot from Azure (cor.net blocks data-center addresses either way); revisit if the hybrid job is built. |
 | Agenda platforms change without notice | Stale-source check (Phase 4); the per-platform readers are kept small and tested. |
 | Database growth from large packets (for example, Dallas County's 1,750-page agendas) | Page-text retention limits (Phase 2). |
 | Noise from broad terms across 42+ sources | Filters (Phase 1); triage (Later). |

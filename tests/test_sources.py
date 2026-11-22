@@ -369,3 +369,9 @@ def test_link_page_name_from_table_cell():
                          link_pattern=r"/DownloadFile/[^?]+\.pdf\?documentType=1&", name_cell=0, skip_undated=True)
     docs = src.list_documents(START, END)
     assert [(d.meeting_date, d.body) for d in docs] == [(date(2026, 12, 1), "City Council Regular Meeting")]
+
+
+def test_source_note_reaches_status():
+    srcs = build_sources([{"name": "R", "type": "link_page", "urls": ["https://x.example/"],
+                           "note": "Fallback; notice is short."}], FakeHttp({}))
+    assert srcs[0].note == "Fallback; notice is short."
