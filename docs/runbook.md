@@ -8,7 +8,7 @@ why it's built this way.
 | Piece | Azure resource (resource group `rg-agendawatch`) |
 |---|---|
 | Daily run | Container Apps job `agendawatch-daily`, scheduled `0 11 * * *` UTC (5 AM CST / 6 AM CDT); the container runs on Central time (`TZ=America/Chicago`) |
-| Public site | Storage account `agendawatchbcfoiznunxe4`, static website (`$web` container): https://agendawatchbcfoiznunxe4.z21.web.core.windows.net/ |
+| Public site | https://agendas.urbancivic.cloud (through Cloudflare) → storage account `agendawatchbcfoiznunxe4`, static website (`$web` container): https://agendawatchbcfoiznunxe4.z21.web.core.windows.net/ |
 | Database | `state/agenda_watch.db` in the same storage account (private), with 14-day soft delete |
 | Run lock | `state/run.lock` (blob lease) |
 | Image | Azure Container Registry `agendawatchacrbcfoiznunx`, repository `agendawatch` |
@@ -83,6 +83,52 @@ az containerapp job update -g rg-agendawatch -n agendawatch-daily --image <regis
 **Restore the database** (it has 14 days of soft delete and is overwritten each run): in the
 portal, storage account → `state` container → show deleted blobs/versions → undelete; or delete
 `agenda_watch.db` to start fresh (everything in the window is reported as new once).
+
+## Custom domain (agendas.urbancivic.cloud via Cloudflare)
+
+Azure Storage's static website can't serve HTTPS on a custom domain itself, so Cloudflare's free
+proxy provides the certificate:
+
+```
+browser ──HTTPS──▶ Cloudflare (certificate for agendas.urbancivic.cloud)
+                      └─HTTPS──▶ agendawatchbcfoiznunxe4.z21.web.core.windows.net
+```
+
+The storage account also registers the domain, so it answers requests for that hostname.
+Cloudflare's free plan can't rewrite the Host header, which is why the domain is registered on the
+account instead. Registration uses Azure's *indirect* `asverify` check, because Cloudflare's proxy
+would break the direct check.
+
+**One-time setup**
+
+1. **Cloudflare:** create a free account, choose *Add a site*, enter `urbancivic.cloud`, and pick the Free plan.
+2. **Registrar:** replace the nameservers for `urbancivic.cloud` with the two Cloudflare shows.
+   Cloudflare emails when the zone is active, usually within an hour and sometimes up to 24 hours.
+3. **Cloudflare → DNS → Records:** add
+
+   | Type | Name | Target | Proxy |
+   |---|---|---|---|
+   | CNAME | `asverify.agendas` | `asverify.agendawatchbcfoiznunxe4.blob.core.windows.net` | **DNS only** (grey cloud) |
+   | CNAME | `agendas` | `agendawatchbcfoiznunxe4.z21.web.core.windows.net` | **Proxied** (orange cloud) |
+
+4. **Cloudflare → SSL/TLS → Overview:** set the encryption mode to **Full**, not "Full (strict)":
+   Azure presents its own `*.web.core.windows.net` certificate. Under **Edge Certificates**, turn
+   on **Always Use HTTPS**.
+5. **Azure:** register the domain and switch the feed links to it:
+   ```bash
+   SUBSCRIPTION="Pay-As-You-Go" ALERT_EMAIL=you@example.com \
+   CUSTOM_DOMAIN=agendas.urbancivic.cloud infra/deploy.sh
+   az containerapp job start -g rg-agendawatch -n agendawatch-daily   # republish with the new URL
+   ```
+   Later runs of `deploy.sh` keep the domain automatically.
+
+**Check:** `curl -sI https://agendas.urbancivic.cloud/` should return `200`, with `server: cloudflare`.
+The original `*.web.core.windows.net` address keeps working too.
+
+**Troubleshooting**
+- **`deploy.sh` fails with a custom-domain validation error:** the `asverify.agendas` record is missing, still propagating, or proxied. It must be DNS only.
+- **Cloudflare error 526:** SSL mode is "Full (strict)". **Error 525 or redirect loops:** SSL mode is "Flexible". Use "Full".
+- **HTTP 400 "InvalidUri" or similar from Azure:** the domain isn't registered on the storage account yet (step 5).
 
 ## Costs (rough, per month)
 

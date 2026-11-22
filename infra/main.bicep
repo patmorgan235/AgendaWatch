@@ -25,8 +25,11 @@ param image string = 'mcr.microsoft.com/k8se/quickstart-jobs:latest'
 @description('When the daily run starts, as a cron expression in UTC. 11:00 UTC = 5 or 6 AM Central.')
 param scheduleCron string = '0 11 * * *'
 
-@description('Public URL of the site, for absolute links in the feeds. Empty = the storage static website URL.')
+@description('Public URL of the site, for absolute links in the feeds. Empty = https://<customDomain>, or the storage static website URL when there is no custom domain.')
 param siteUrl string = ''
+
+@description('Custom domain served through Cloudflare, e.g. agendas.urbancivic.cloud. Registered on the storage account with indirect (asverify) validation, so the CNAME "asverify.<domain>" → "asverify.<storage>.blob.core.windows.net" (not proxied) must exist before deploying. Empty = none.')
+param customDomain string = ''
 
 @description('Drop stored page text for meetings older than this many days (0 = keep everything).')
 param pageRetentionDays int = 90
@@ -73,6 +76,9 @@ resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
     allowBlobPublicAccess: false   // the static website endpoint is public on its own
     supportsHttpsTrafficOnly: true
     accessTier: 'Hot'
+    // Lets the static website answer requests for the custom domain. Visitors get HTTPS from
+    // Cloudflare's proxy (SSL mode "Full"); Azure Storage can't hold a certificate for it.
+    customDomain: empty(customDomain) ? null : { name: customDomain, useSubDomainName: true }
   }
 }
 
@@ -201,7 +207,7 @@ resource env 'Microsoft.App/managedEnvironments@2024-03-01' = {
 }
 
 // The site code strips a trailing slash, so the endpoint can be used as-is.
-var effectiveSiteUrl = empty(siteUrl) ? storage.properties.primaryEndpoints.web : siteUrl
+var effectiveSiteUrl = !empty(siteUrl) ? siteUrl : (!empty(customDomain) ? 'https://${customDomain}' : storage.properties.primaryEndpoints.web)
 
 resource job 'Microsoft.App/jobs@2024-03-01' = {
   name: '${prefix}-daily'
@@ -311,6 +317,8 @@ ContainerAppConsoleLogs_CL
 // ---------------------------------------------------------------- outputs
 output storageAccount string = storage.name
 output siteUrl string = effectiveSiteUrl
+output webEndpointHost string = replace(replace(storage.properties.primaryEndpoints.web, 'https://', ''), '/', '')
+output asverifyTarget string = 'asverify.${storage.name}.blob.${environment().suffixes.storage}'
 output registryName string = registry.name
 output registryLoginServer string = registry.properties.loginServer
 output jobName string = job.name

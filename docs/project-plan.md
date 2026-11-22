@@ -18,7 +18,7 @@ A searchable history of past agenda items is useful but secondary.
 
 ## Where we are (November 22, 2026)
 
-- **Live:** https://agendawatchbcfoiznunxe4.z21.web.core.windows.net/
+- **Live:** https://agendas.urbancivic.cloud (also https://agendawatchbcfoiznunxe4.z21.web.core.windows.net/)
   - Updated daily at 11:00 UTC (5 AM CST / 6 AM CDT) by an Azure Container Apps job.
   - The site has filters (upcoming only, new since your last visit, section, city, term, search), an Atom feed (`feed.xml`), a calendar feed (`upcoming.ics`) and the raw data (`data.json`).
 - **Coverage:** 43 sources (42 bodies; Richardson has two sources). Report sections: DART member cities, DCTA member cities, Trinity Metro member & associate cities, Regional (RTC), Counties, and Eligible to join a transit agency.
@@ -165,10 +165,15 @@ so it came first.
 - [x] `infra/deploy.sh` (registers providers, deploys, keeps the job's current image, turns on the static website) and `infra/push-image.sh` (local build and push).
 - [x] GitHub Actions (`.github/workflows/deploy.yml`): tests on every push and pull request; on `main`, builds, pushes and updates the job. The repo variables are set.
 - [x] Runbook: `docs/runbook.md`.
-- [ ] Optional: a custom domain through Front Door or a CDN (not started).
+- [x] Custom domain **https://agendas.urbancivic.cloud** (live Nov 22).
+  - Cloudflare provides DNS and HTTPS: free plan, proxied CNAME, SSL mode "Full".
+  - The storage account registers the domain with indirect `asverify` validation, because Cloudflare's free plan can't rewrite the Host header. Front Door (≈$35/month) wasn't needed.
+  - `deploy.sh` keeps the domain on later runs.
+  - Verified: the page, `data.json`, `feed.xml` and `upcoming.ics` are served over HTTPS with a valid certificate (`server: cloudflare`), and the feed and calendar links use the domain.
+  - Remaining: turn on Cloudflare's "Always Use HTTPS". Until then, plain `http://` gets HTTP 400 from Azure.
 
 **Deployed:** Pay-As-You-Go subscription, resource group `rg-agendawatch`, South Central US.
-- Site: https://agendawatchbcfoiznunxe4.z21.web.core.windows.net/
+- Site: https://agendas.urbancivic.cloud (storage endpoint: https://agendawatchbcfoiznunxe4.z21.web.core.windows.net/)
 - Registry: `agendawatchacrbcfoiznunx`
 - Job: `agendawatch-daily`
 
@@ -217,7 +222,7 @@ so it came first.
 | Agenda platforms change without notice | Stale-source check (Phase 4); the per-platform readers are kept small and tested. |
 | Database growth from large packets (for example, Dallas County's 1,750-page agendas) | Page-text retention limits (Phase 2). |
 | Noise from broad terms across 42+ sources | Filters (Phase 1); triage (Later). |
-| Custom domain | To decide before Phase 3. |
+| Custom domain | Live at https://agendas.urbancivic.cloud through Cloudflare (Phase 3). |
 
 ## Source notes
 
