@@ -1,0 +1,84 @@
+# agenda-watch configuration
+# Edit terms and sources here; no code changes needed.
+
+settings:
+  lookback_days: 10          # re-check meetings this many days back (late-posted minutes, amendments)
+  lookahead_days: 60         # and this far ahead (agendas usually post 3–7 days before a meeting)
+  database: data/agenda_watch.db
+  report_dir: reports
+  max_download_mb: 80        # skip agenda packets bigger than this
+  request_delay_seconds: 1.0 # pause between requests to the same site
+  ocr: auto                  # auto = OCR scanned PDFs if ocrmypdf is installed; off = never
+  snippet_chars: 140         # context shown on each side of a match
+  max_snippets_per_term: 5   # per agenda, so one long packet doesn't flood the report
+
+# ------------------------------------------------------------------ key terms
+# Plain phrases match whole words, ignore case, and tolerate line breaks inside the phrase.
+# Options: case_sensitive, regex (pattern is a regular expression), whole_word,
+#          exclude_if_nearby (skip a match when one of these phrases is within ~150 characters).
+terms:
+  - name: DART
+    case_sensitive: true          # so "dart" / "Dart Container" don't match
+  - name: Dallas Area Rapid Transit
+  - name: Transit                 # broad on purpose; also catches "transit-oriented development"
+  - name: GMP
+    case_sensitive: true
+    exclude_if_nearby:            # construction contracts use GMP for "Guaranteed Maximum Price"
+      - guaranteed maximum price
+      - guaranteed maximum
+      - construction manager at risk
+      - CMAR
+  - name: General Mobility Program
+  - name: Streetcar
+    pattern: 'street[\s\-]?cars?'   # street car, streetcar, street-car, streetcars
+    regex: true
+
+# ------------------------------------------------------------------ sources
+# type: legistar  — client is the name before .legistar.com
+# type: novus     — base_url is the NovusAGENDA "agendapublic" folder
+# type: link_page — any page linking to agendas; link_pattern picks which links are agendas
+# Optional on any source:  bodies: ["City Council", "Transportation"]  (only meetings whose name contains one)
+#                          enabled: false
+sources:
+  - name: Dallas
+    type: legistar
+    client: cityofdallas
+    # Dallas posts agendas for dozens of boards. To narrow it, uncomment:
+    # bodies: ["City Council", "Briefing", "Transportation and Infrastructure"]
+    attachments: none           # none | names (also search item titles & attachment names) | download
+
+  - name: Farmers Branch
+    type: legistar
+    client: farmersbranch
+
+  - name: Plano
+    type: novus
+    base_url: https://plano.novusagenda.com/agendapublic
+
+  - name: Richardson
+    type: link_page
+    # Richardson's Swagit video archive links each meeting's agenda. It lists a meeting once
+    # it has been held or is about to be streamed, so alerts can trail the posting by a few days.
+    urls:
+      - https://richardsontx.new.swagit.com/views/614
+    link_pattern: '/videos/\d+/agenda'
+    link_text_pattern: '^agenda$'
+    max_links: 15
+
+  - name: Carrollton
+    type: legistar
+    client: carrolltontx
+
+  - name: University Park
+    type: legistar
+    client: uptexas
+
+  - name: Addison
+    type: link_page
+    urls:
+      - https://agendas.addisontx.gov/agenda_publish.cfm
+      - https://agendas.addisontx.gov/agenda_publish.cfm?id=&mt=ALL&get_month={month}&get_year={year}&dsp=ag&seq=
+    months_back: 1
+    link_pattern: '/docs/\d{4}/[^?#]+\.pdf'
+    follow_pattern: 'agenda_publish\.cfm\?.*seq=\d+'   # meeting pages that hold the PDF links
+    max_links: 30

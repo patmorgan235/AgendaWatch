@@ -1,0 +1,5 @@
+requests>=2.31
+beautifulsoup4>=4.12
+pypdf>=4.0
+PyYAML>=6.0
+# Optional, for scanned PDFs: install ocrmypdf (and Tesseract) separately, e.g. `brew install ocrmypdf`
