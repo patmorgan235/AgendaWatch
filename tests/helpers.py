@@ -31,6 +31,13 @@ class FakeHttp:
     def __init__(self, routes: dict[str, object]):
         self.routes = routes
         self.calls: list[str] = []
+        self.host_headers: dict[str, dict] = {}
+
+    def set_host_headers(self, host, headers):
+        self.host_headers.setdefault(host, {}).update(headers)
+
+    def set_browser_host(self, host):
+        self.set_host_headers(host, {"User-Agent": "Mozilla/5.0 (test)", "_http2": "yes"})
 
     def _key(self, url, params=None):
         return f"{url}?{urlencode(params)}" if params else url

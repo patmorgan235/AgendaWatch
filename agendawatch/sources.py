@@ -6,6 +6,8 @@ Each source returns Document objects; the runner downloads and searches them.
              Uses the public Legistar Web API; falls back to the website calendar.
   novus      NovusAGENDA (Plano).
   link_page  Any page that links to agendas (Addison, Richardson's Swagit archive).
+  doc_table  A page with one table row per meeting and a column per document
+             (Richardson's "Council Meeting Documents" page on cor.net).
 """
 
 from __future__ import annotations
@@ -13,7 +15,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from datetime import date, timedelta
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
@@ -291,6 +293,82 @@ class LinkPageSource(Source):
         return docs
 
 
+# ---------------------------------------------------------------- document table
+@dataclass
+class DocTableSource(Source):
+    """A table of meetings: a date column, then columns of document links.
+
+    `columns` names the header cells (case-insensitive, partial match) whose links to read,
+    e.g. ["agenda", "packet"]. The meeting name comes from the first of those columns' link
+    text ("City Council Meeting", "Special Called Meeting: ..."). Other columns (presentations,
+    video, minutes) are ignored.
+    """
+
+    urls: list[str] = field(default_factory=list)
+    columns: list[str] = field(default_factory=lambda: ["agenda", "packet"])
+    link_pattern: str = r"."
+    skip_pattern: str = r"\b(cancel+ed|no meeting)\b"
+    platform: str = "document table"
+
+    def _parse(self, page_url: str, html: str, start: date, end: date, href_re, skip_re) -> list[Document]:
+        soup = BeautifulSoup(html, "html.parser")
+        wanted = [c.lower() for c in self.columns]
+        docs: list[Document] = []
+        for table in soup.find_all("table"):
+            rows = table.find_all("tr")
+            if not rows:
+                continue
+            headers = [c.get_text(" ", strip=True).lower() for c in rows[0].find_all(["th", "td"])]
+            cols = [(w, next((i for i, h in enumerate(headers) if w in h), None)) for w in wanted]
+            cols = [(w, i) for w, i in cols if i is not None]
+            if not cols:
+                continue
+            for row in rows[1:]:
+                cells = row.find_all(["td", "th"])
+                if not cells:
+                    continue
+                row_text = row.get_text(" ", strip=True)
+                mdate = parse_date(cells[0].get_text(" ", strip=True)) or parse_date(row_text)
+                if skip_re.search(row_text):
+                    continue
+                links = []
+                for w, i in cols:
+                    if i < len(cells):
+                        for a in cells[i].find_all("a", href=True):
+                            href = urljoin(page_url, a["href"])
+                            if href_re.search(href):
+                                links.append((w, href, re.sub(r"\s+", " ", a.get_text(" ", strip=True))))
+                if not links:
+                    continue
+                body = (links[0][2] or "Meeting")[:80]
+                if not (_in_window(mdate, start, end) and _body_allowed(body, self.bodies)):
+                    continue
+                for w, href, text in links:
+                    title = f"{body} {w}" if w.lower() not in body.lower() else body
+                    docs.append(Document(self.name, self.city, body, mdate, title, href, w, page_url))
+        return docs
+
+    def list_documents(self, start: date, end: date) -> list[Document]:
+        href_re = re.compile(self.link_pattern, re.I)
+        skip_re = re.compile(self.skip_pattern, re.I)
+        docs, errors, tables_seen = [], [], False
+        for url in self.urls:
+            try:
+                html = self.http.get_text(url)
+            except FetchError as exc:
+                errors.append(str(exc))
+                continue
+            tables_seen = tables_seen or "<table" in html.lower()
+            docs.extend(self._parse(url, html, start, end, href_re, skip_re))
+        if errors and not docs:
+            raise SourceError("; ".join(dict.fromkeys(errors))[:300])
+        if errors:
+            self.notes.append(f"{len(errors)} page(s) couldn't be read")
+        if not tables_seen and not errors:
+            raise SourceError("No meeting table found on the page (has the site's layout changed?)")
+        return list({d.url: d for d in docs}.values())
+
+
 # ---------------------------------------------------------------- factory
 def build_sources(specs: list[dict], http: Http) -> list[Source]:
     sources: list[Source] = []
@@ -302,6 +380,14 @@ def build_sources(specs: list[dict], http: Http) -> list[Source]:
         name = spec.pop("name")
         city = spec.pop("city", name)
         bodies = spec.pop("bodies", []) or []
+        user_agent = spec.pop("user_agent", None)
+        if user_agent:
+            hosts = {urlparse(u).netloc for u in spec.get("urls", []) + [spec.get("base_url") or ""]}
+            for host in filter(None, hosts):
+                if user_agent == "browser":
+                    http.set_browser_host(host)
+                else:
+                    http.set_host_headers(host, {"User-Agent": str(user_agent)})
         common = dict(name=name, city=city, http=http, bodies=bodies)
         if kind == "legistar":
             sources.append(LegistarSource(**common, **spec))
@@ -309,6 +395,8 @@ def build_sources(specs: list[dict], http: Http) -> list[Source]:
             sources.append(NovusSource(**common, **spec))
         elif kind == "link_page":
             sources.append(LinkPageSource(**common, **spec))
+        elif kind == "doc_table":
+            sources.append(DocTableSource(**common, **spec))
         else:
             raise ValueError(f"Source '{name}' has unknown type '{kind}'")
     return sources

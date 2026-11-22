@@ -9,7 +9,7 @@ Checks seven North Texas city agenda sites every day, searches each agenda for y
 | Carrollton | Legistar (`carrolltontx`) | same |
 | University Park | Legistar (`uptexas`) | same |
 | Plano | NovusAGENDA | meeting list → agenda PDFs |
-| Richardson | Swagit video archive | "Agenda" link for each meeting |
+| Richardson | cor.net Council Meeting Documents | agenda + packet PDFs, posted ~6 days ahead (Swagit video archive kept in config, disabled) |
 | Addison | Addison agenda portal | meeting pages → agenda packet PDFs |
 
 Terms: DART, Dallas Area Rapid Transit, Transit, GMP, General Mobility Program, Streetcar.
@@ -85,6 +85,7 @@ Everything is in `config.yaml`.
 - **False positives:** `exclude_if_nearby` skips a match when a phrase appears close by. GMP already skips "Guaranteed Maximum Price", which is common in construction contracts.
 - **Fewer Dallas meetings:** Dallas posts agendas for dozens of boards. Uncomment the `bodies:` line to keep only the ones you care about.
 - **Deeper Legistar search:** `attachments: names` also searches agenda item titles and attachment names; `download` also downloads and searches attachments (slower).
+- **A page with one row per meeting:** use `type: doc_table` and list which columns to read in `columns` (see Richardson).
 - **Another city:** if it's on Legistar, copy a Legistar block and change `client` to the name before `.legistar.com`. For other sites, use `type: link_page` with the page that lists agendas and a `link_pattern` matching the agenda links.
 
 ## Scanned PDFs
@@ -96,14 +97,14 @@ Some packets are scanned images with no text. The report notes these under Sourc
 - **A Legistar city shows "API unavailable"** — the tool falls back to the city's website calendar on its own, so this is usually just a note. If both fail, check that `https://<client>.legistar.com/Calendar.aspx` opens in your browser; if the city has moved platforms, update that source.
 - **University Park or Farmers Branch errors** — my evidence that these two still use Legistar was older than the others. If `check` fails, find "Agendas" on the city site, see where it leads, and adjust the source (or set `enabled: false`).
 - **Addison shows no agendas** — open `https://agendas.addisontx.gov/agenda_publish.cfm`, right-click an agenda packet link, copy its address, and make sure `link_pattern` matches it.
-- **Richardson alerts arrive late** — the Swagit archive lists a meeting around when it's held. If you find the page on cor.net where upcoming agendas are posted first, add it as another `urls:` entry.
+- **Richardson (cor.net) shows HTTP 403 or "needs HTTP/2"** — cor.net turns away anything that doesn't look like a browser, so this source sends a browser User-Agent over HTTP/2 (`user_agent: browser`). Make sure `pip install -r requirements.txt` installed `httpx[http2]`. If it still gets 403, the city has tightened its bot filter; set `enabled: true` on the "Richardson (video archive)" source to fall back to Swagit, which works but only lists meetings around when they're held.
 
 ## How it works
 
 ```
 agenda_watch.py          command line (run / check / search)
 config.yaml              terms, cities, settings
-agendawatch/sources.py   Legistar, NovusAGENDA and generic link-page adapters
+agendawatch/sources.py   Legistar, NovusAGENDA, link-page and document-table adapters
 agendawatch/extract.py   PDF/HTML → per-page text (OCR when needed)
 agendawatch/matcher.py   term matching, false-positive filters, snippets
 agendawatch/store.py     SQLite: agendas read, page text, matches already reported

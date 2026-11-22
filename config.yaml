@@ -37,6 +37,8 @@ terms:
 # type: legistar  — client is the name before .legistar.com
 # type: novus     — base_url is the NovusAGENDA "agendapublic" folder
 # type: link_page — any page linking to agendas; link_pattern picks which links are agendas
+# type: doc_table — a page with a table row per meeting; columns names which document columns to read
+# Optional on any source:  user_agent: browser  (for sites that refuse non-browser clients)
 # Optional on any source:  bodies: ["City Council", "Transportation"]  (only meetings whose name contains one)
 #                          enabled: false
 sources:
@@ -56,9 +58,20 @@ sources:
     base_url: https://plano.novusagenda.com/agendapublic
 
   - name: Richardson
+    type: doc_table
+    # cor.net posts the agenda and packet about 6 days before each council meeting.
+    # The site blocks non-browser clients, so requests to it identify as a browser.
+    urls:
+      - https://www.cor.net/government/city-council/council-meeting-documents
+    user_agent: browser
+    columns: [agenda, packet]
+
+  - name: Richardson (video archive)
+    city: Richardson
     type: link_page
-    # Richardson's Swagit video archive links each meeting's agenda. It lists a meeting once
-    # it has been held or is about to be streamed, so alerts can trail the posting by a few days.
+    enabled: false
+    # Backup, and covers Planning Commission and other meetings. Swagit lists a meeting
+    # around when it's held, so anything here is usually already caught by cor.net above.
     urls:
       - https://richardsontx.new.swagit.com/views/614
     link_pattern: '/videos/\d+/agenda'

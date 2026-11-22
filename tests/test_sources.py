@@ -1,7 +1,7 @@
 from datetime import date
 
 from agendawatch.http import FetchError
-from agendawatch.sources import LegistarSource, LinkPageSource, NovusSource
+from agendawatch.sources import DocTableSource, LegistarSource, LinkPageSource, NovusSource, build_sources
 
 from helpers import FakeHttp
 
@@ -123,3 +123,73 @@ def test_link_page_follows_meeting_pages():
     assert len(docs) == 1
     assert docs[0].url.endswith("AGENDApacket_7601.pdf")
     assert docs[0].meeting_date == date(2026, 11, 10)
+
+
+COR_TABLE = """
+<table class="govAccess-reTable-4"><thead><tr>
+ <th>&nbsp;DATE</th><th>AGENDA</th><th>PACKET</th><th>PRESENTATIONS / VIDEO</th><th colspan="2">ACTIONS / MINUTES</th>
+</tr></thead><tbody>
+<tr><td>November 23, 2026</td>
+ <td><a href="https://www.cor.net/home/showpublisheddocument/47501/639304000000000000">City Council Meeting</a></td>
+ <td>&nbsp;</td><td>Presentations<br>Meeting Video</td><td colspan="2">Approved Minutes</td></tr>
+<tr><td>November 16, 2026</td>
+ <td><a href="/home/showpublisheddocument/47473/639299221076900000">Special Called Meeting: Board &amp; Commission Interviews</a></td>
+ <td>&nbsp;</td><td>Presentations</td><td>Approved Minutes</td></tr>
+<tr><td>November 9, 2026</td>
+ <td><a href="https://www.cor.net/home/showpublisheddocument/47415/639293225086370000">City Council Meeting</a></td>
+ <td><a href="https://www.cor.net/home/showpublisheddocument/47419/639293918044870000">Agenda Packet</a></td>
+ <td><a href="https://www.cor.net/home/showpublisheddocument/47469/639298398353970000">Presentations</a><br>
+     <a href="https://richardsontx.new.swagit.com/videos/408119">Meeting Video</a></td>
+ <td colspan="2">Approved Minutes</td></tr>
+<tr><td>November 30, 2026</td><td>City Council - No Meeting</td><td></td><td></td><td></td></tr>
+<tr><td>September 8, 2025</td>
+ <td><a href="https://www.cor.net/home/showpublisheddocument/40000/1">City Council Meeting</a></td><td></td><td></td><td></td></tr>
+</tbody></table>"""
+
+
+def test_doc_table_reads_agenda_and_packet_columns():
+    url = "https://www.cor.net/government/city-council/council-meeting-documents"
+    src = DocTableSource(name="Richardson", city="Richardson", http=FakeHttp({url: COR_TABLE}), urls=[url])
+    docs = src.list_documents(START, END)
+    got = [(d.meeting_date, d.kind, d.body, d.url.rsplit("/", 2)[1]) for d in docs]
+    assert got == [
+        (date(2026, 11, 23), "agenda", "City Council Meeting", "47501"),
+        (date(2026, 11, 16), "agenda", "Special Called Meeting: Board & Commission Interviews", "47473"),
+        (date(2026, 11, 9), "agenda", "City Council Meeting", "47415"),
+        (date(2026, 11, 9), "packet", "City Council Meeting", "47419"),
+    ]  # presentations/video ignored, the 2025 row is outside the window, "No Meeting" has no links
+    assert docs[1].url.startswith("https://www.cor.net/home/")  # relative link resolved
+    assert docs[3].title == "City Council Meeting packet"
+    assert all(d.is_upcoming is (d.meeting_date >= date.today()) for d in docs)
+
+
+def test_doc_table_without_a_table_is_an_error():
+    url = "https://example.gov/docs"
+    src = DocTableSource(name="X", city="X", http=FakeHttp({url: "<p>Access Denied</p>"}), urls=[url])
+    try:
+        src.list_documents(START, END)
+    except Exception as exc:  # noqa: BLE001
+        assert "No meeting table" in str(exc)
+    else:
+        raise AssertionError("expected an error")
+
+
+def test_user_agent_browser_applies_only_to_that_sites_host():
+    http = FakeHttp({})
+    build_sources([
+        {"name": "Richardson", "type": "doc_table", "user_agent": "browser",
+         "urls": ["https://www.cor.net/government/city-council/council-meeting-documents"]},
+        {"name": "Addison", "type": "link_page", "urls": ["https://agendas.addisontx.gov/x"]},
+    ], http)
+    assert list(http.host_headers) == ["www.cor.net"]
+    assert http.host_headers["www.cor.net"]["_http2"] == "yes"
+
+
+def test_browser_host_routing_without_network():
+    from agendawatch.http import BROWSER_HEADERS, Http
+
+    http = Http(delay=0)
+    http.set_browser_host("www.cor.net")
+    assert http._is_browser_host("https://www.cor.net/home/showpublisheddocument/1/2")
+    assert not http._is_browser_host("https://richardsontx.new.swagit.com/views/614")
+    assert http._host_headers["www.cor.net"] == BROWSER_HEADERS
