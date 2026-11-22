@@ -1,7 +1,7 @@
 from datetime import date
 
 from agendawatch.http import FetchError
-from agendawatch.sources import CivicClerkSource, DocTableSource, LegistarSource, LinkPageSource, NovusSource, build_sources
+from agendawatch.sources import CivicClerkSource, CivicWebSource, DocTableSource, LegistarSource, LinkPageSource, NovusSource, build_sources
 
 from helpers import FakeHttp
 
@@ -224,3 +224,49 @@ def test_civicclerk_events_and_paging():
 
     only_council = CivicClerkSource(name="R", city="R", http=http, tenant="rowletttx", bodies=["City Council"])
     assert {d.body for d in only_council.list_documents(START, END)} == {"City Council Meeting"}
+
+
+RTC_PAGE = """
+<div class="table-row"><div class="table-cell"><span class="month">November 5</span></div>
+ <div class="table-cell">
+  <a class="link" href="/getContentAsset/4fa4/dfc3/agendartc11-05-2026.pdf?language=en-US">Agenda</a>
+  <a class="link" href="/getContentAsset/59a4/dfc3/agendapacketrtc11052026.pdf?language=en-US">Agenda (including all meeting materials)</a>
+  <a class="link" href="/getContentAsset/13f4/dfc3/presentationsrtc11052026.pdf?language=en-US">Presentations </a>
+ </div>
+ <div class="table-cell"><a class="link" href="/getContentAsset/beb9/dfc3/minutesrtc11052026.pdf?language=en-US">Minutes</a></div>
+</div>"""
+
+
+def test_rtc_link_page_dates_from_file_names():
+    url = "https://www.nctcog.org/trans/about/committees/regional-transportation-council"
+    src = LinkPageSource(name="RTC", city="RTC", http=FakeHttp({url: RTC_PAGE}), urls=[url],
+                         link_pattern=r"/getContentAsset/.+\.pdf", link_text_pattern="^Agenda",
+                         meeting_name="Regional Transportation Council")
+    docs = src.list_documents(START, END)
+    assert [(d.meeting_date, d.body, d.url.split("/")[-1].split("?")[0]) for d in docs] == [
+        (date(2026, 11, 5), "Regional Transportation Council", "agendartc11-05-2026.pdf"),
+        (date(2026, 11, 5), "Regional Transportation Council", "agendapacketrtc11052026.pdf"),
+    ]
+
+
+def test_civicweb_document_center():
+    base = "https://dallascounty.civicweb.net"
+    a = lambda href, text: f'<a href="{href}">{text}</a>'
+    http = FakeHttp({
+        f"{base}/filepro/documents": a("/filepro/documents/1009", "Agendas") + a("/filepro/documents/9754", "Minutes"),
+        f"{base}/filepro/documents/1009": a("/filepro/documents/1021", "Commissioners Court")
+            + a("/filepro/documents/15878", "Executive Session"),
+        f"{base}/filepro/documents/1021": a("/filepro/documents/1040992", "2026") + a("/filepro/documents/1011482", "2025"),
+        f"{base}/filepro/documents/1040992":
+            a("/document/1066462", "Commissioners Court - Nov 17 2026 - Agenda - Html")
+            + a("/document/1066461", "Commissioners Court - Nov 17 2026 - Agenda - Pdf")
+            + a("/document/1064083", "Commissioners Court - Sep 01 2026 - Agenda - Html"),
+    })
+    src = CivicWebSource(name="Dallas County", city="Dallas County", http=http, base_url=base)
+    docs = src.list_documents(START, END)
+    assert [(d.meeting_date, d.body, d.url) for d in docs] == [
+        (date(2026, 11, 17), "Commissioners Court", f"{base}/document/1066462"),
+    ]  # Pdf skipped by default, Sep 1 outside the window, 2025 folder not opened
+    assert f"{base}/filepro/documents/1011482" not in http.calls
+    both = CivicWebSource(name="DC", city="DC", http=http, base_url=base, format="both")
+    assert len(both.list_documents(START, END)) == 2

@@ -7,6 +7,8 @@ Each source returns Document objects; the runner downloads and searches them.
   novus      NovusAGENDA (no city uses it now; Plano left it in July 2026).
   link_page  Any page that links to agendas (Addison, Richardson's Swagit archive).
   civicclerk CivicClerk (Rowlett, Garland). Uses the portal's public OData API.
+  civicweb   iCompass/Diligent CivicWeb (Dallas County). Walks the Document Center's
+             Agendas folder: meeting type → year → "<Meeting> - <Mon DD YYYY> - Agenda - Html|Pdf".
   doc_table  A page with one table row per meeting and a column per document
              (Richardson's "Council Meeting Documents" page on cor.net).
 """
@@ -16,7 +18,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from datetime import date, timedelta
-from urllib.parse import urljoin, urlparse
+from urllib.parse import unquote, urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
@@ -215,6 +217,7 @@ class LinkPageSource(Source):
     link_pattern: str = r"\.pdf"
     link_text_pattern: str | None = None
     follow_pattern: str | None = None
+    meeting_name: str | None = None   # use this instead of guessing the meeting name from the page
     months_back: int = 1
     max_links: int = 60
     platform: str = "web page"
@@ -284,11 +287,14 @@ class LinkPageSource(Source):
         docs = []
         for href, ctx in list(candidates.items())[: self.max_links]:
             row_text = ctx.split(" || ")[0]
-            mdate = parse_date(row_text) or parse_date(href)
-            body = re.sub(r"\b(Video|Agenda|Minutes|Packet|Download)\b", "", row_text)
-            body = re.sub(r"[A-Za-z]{3,9}\.? \d{1,2},? \d{4}|\d{1,2}/\d{1,2}/\d{2,4}|\d{1,2}h \d{2}m|\d{1,2}m \d{2}s", "", body)
-            body = re.sub(r"\s+", " ", body).strip(" -|·") or "Meeting"
-            body = body[:80]
+            mdate = parse_date(row_text) or parse_date(unquote(href))
+            if self.meeting_name:
+                body = self.meeting_name
+            else:
+                body = re.sub(r"\b(Video|Agenda|Minutes|Packet|Download)\b", "", row_text)
+                body = re.sub(r"[A-Za-z]{3,9}\.? \d{1,2},? \d{4}|\d{1,2}/\d{1,2}/\d{2,4}|\d{1,2}h \d{2}m|\d{1,2}m \d{2}s", "", body)
+                body = re.sub(r"\s+", " ", body).strip(" -|·") or "Meeting"
+                body = body[:80]
             if _in_window(mdate, start, end) and _body_allowed(body, self.bodies):
                 docs.append(Document(self.name, self.city, body, mdate, f"{body} agenda", href, "agenda"))
         return docs
@@ -347,6 +353,68 @@ class CivicClerkSource(Source):
                 break
         else:
             self.notes.append(f"Stopped after {self.max_pages} pages of events")
+        return docs
+
+
+# ---------------------------------------------------------------- CivicWeb
+@dataclass
+class CivicWebSource(Source):
+    """CivicWeb (https://<name>.civicweb.net) agendas from the public Document Center.
+
+    The Document Center has an "Agendas" folder with a subfolder per meeting type
+    ("Commissioners Court", ...), a subfolder per year, and the agendas themselves named
+    "<Meeting> - Nov 17 2026 - Agenda - Html" (and "- Pdf"). The Html version lists every
+    agenda item and is small; the Pdf version can include all backup and run past 100 MB.
+    """
+
+    base_url: str = ""
+    meeting_types: list[str] = field(default_factory=lambda: ["Commissioners Court"])
+    agendas_folder: str = "Agendas"
+    format: str = "html"            # html | pdf | both
+    platform: str = "CivicWeb"
+
+    _LINK = re.compile(r'<a[^>]+href="(/filepro/documents/\d+|/document/\d+)[^"]*"[^>]*>(.*?)</a>', re.S | re.I)
+    _NAME = re.compile(r"^(?P<body>.+?)\s*-\s*(?P<date>[A-Za-z]{3,9}\.? \d{1,2},? \d{4})\s*-\s*Agenda\s*-\s*(?P<fmt>Html|Pdf)\s*$", re.I)
+
+    def _links(self, path: str) -> list[tuple[str, str]]:
+        html = self.http.get_text(urljoin(self.base_url, path))
+        out = []
+        for m in self._LINK.finditer(html):
+            text = re.sub(r"<[^>]+>|\s+", " ", m.group(2)).replace("&amp;", "&").strip()
+            if m.group(1) != path and text:
+                out.append((m.group(1), text))
+        return out
+
+    def _folder(self, links: list[tuple[str, str]], name: str) -> str | None:
+        return next((h for h, t in links if h.startswith("/filepro/") and t.lower() == name.lower()), None)
+
+    def list_documents(self, start: date, end: date) -> list[Document]:
+        formats = {"html": {"html"}, "pdf": {"pdf"}}.get(self.format.lower(), {"html", "pdf"})
+        agendas = self._folder(self._links("/filepro/documents"), self.agendas_folder)
+        if not agendas:
+            raise SourceError(f"No '{self.agendas_folder}' folder in the CivicWeb Document Center")
+        type_links = self._links(agendas)
+        years = {str(y) for y in range(start.year, end.year + 1)}
+        docs: list[Document] = []
+        for mtype in self.meeting_types:
+            folder = self._folder(type_links, mtype)
+            if not folder:
+                self.notes.append(f"No agenda folder named '{mtype}'")
+                continue
+            for year_path, year in self._links(folder):
+                if year not in years or not year_path.startswith("/filepro/"):
+                    continue
+                for doc_path, name in self._links(year_path):
+                    m = self._NAME.match(name)
+                    if not doc_path.startswith("/document/") or not m or m["fmt"].lower() not in formats:
+                        continue
+                    mdate = parse_date(m["date"])
+                    body = m["body"].strip()
+                    if _in_window(mdate, start, end) and _body_allowed(body, self.bodies):
+                        title = f"{body} agenda" + (" (PDF)" if m["fmt"].lower() == "pdf" and len(formats) > 1 else "")
+                        docs.append(Document(self.name, self.city, body, mdate, title,
+                                             urljoin(self.base_url, doc_path), "agenda",
+                                             urljoin(self.base_url, "/Portal/MeetingTypeList.aspx")))
         return docs
 
 
@@ -454,6 +522,8 @@ def build_sources(specs: list[dict], http: Http) -> list[Source]:
             sources.append(LinkPageSource(**common, **spec))
         elif kind == "civicclerk":
             sources.append(CivicClerkSource(**common, **spec))
+        elif kind == "civicweb":
+            sources.append(CivicWebSource(**common, **spec))
         elif kind == "doc_table":
             sources.append(DocTableSource(**common, **spec))
         else:

@@ -1,6 +1,6 @@
 # agenda-watch
 
-Checks nine North Texas city agenda sites every day, searches each agenda for your key terms, and writes a report of new mentions.
+Checks nine North Texas city agenda sites, plus the Regional Transportation Council and Dallas County Commissioners Court every day, searches each agenda for your key terms, and writes a report of new mentions.
 
 | City | Platform | How it's read |
 |---|---|---|
@@ -13,6 +13,8 @@ Checks nine North Texas city agenda sites every day, searches each agenda for yo
 | Addison | Addison agenda portal | meeting pages → agenda packet PDFs |
 | Rowlett | CivicClerk (`rowletttx`) | CivicClerk API → agenda + packet PDFs |
 | Garland | CivicClerk (`garlandtx`) | same |
+| Regional Transportation Council | NCTCOG RTC page | agenda + full meeting packet PDFs |
+| Dallas County | CivicWeb Commissioners Court | HTML agenda + full PDF with briefings, from the Document Center |
 
 Terms: DART, Dallas Area Rapid Transit, Transit, GMP, General Mobility Program, Streetcar.
 
@@ -106,7 +108,7 @@ Some packets are scanned images with no text. The report notes these under Sourc
 ```
 agenda_watch.py          command line (run / check / search)
 config.yaml              terms, cities, settings
-agendawatch/sources.py   Legistar, CivicClerk, NovusAGENDA, link-page and document-table adapters
+agendawatch/sources.py   Legistar, CivicClerk, CivicWeb, NovusAGENDA, link-page and document-table adapters
 agendawatch/extract.py   PDF/HTML → per-page text (OCR when needed)
 agendawatch/matcher.py   term matching, false-positive filters, snippets
 agendawatch/store.py     SQLite: agendas read, page text, matches already reported

@@ -6,7 +6,7 @@ settings:
   lookahead_days: 60         # and this far ahead (agendas usually post 3–7 days before a meeting)
   database: data/agenda_watch.db
   report_dir: reports
-  max_download_mb: 80        # skip agenda packets bigger than this
+  max_download_mb: 250       # skip agenda packets bigger than this (Dallas County PDFs run 100+ MB)
   request_delay_seconds: 1.0 # pause between requests to the same site
   ocr: auto                  # auto = OCR scanned PDFs if ocrmypdf is installed; off = never
   snippet_chars: 140         # context shown on each side of a match
@@ -38,6 +38,7 @@ terms:
 # type: novus     — base_url is the NovusAGENDA "agendapublic" folder
 # type: link_page — any page linking to agendas; link_pattern picks which links are agendas
 # type: civicclerk — tenant is the name before .portal.civicclerk.com
+# type: civicweb  — base_url is the CivicWeb site; meeting_types names folders under Document Center → Agendas
 # type: doc_table — a page with a table row per meeting; columns names which document columns to read
 # Optional on any source:  user_agent: browser  (for sites that refuse non-browser clients)
 # Optional on any source:  bodies: ["City Council", "Transportation"]  (only meetings whose name contains one)
@@ -106,3 +107,24 @@ sources:
     link_pattern: '/docs/\d{4}/[^?#]+\.pdf'
     follow_pattern: 'agenda_publish\.cfm\?.*seq=\d+'   # meeting pages that hold the PDF links
     max_links: 30
+
+  # ---------------------------------------------------------------- regional bodies
+  - name: RTC (NCTCOG)
+    city: Regional Transportation Council
+    type: link_page
+    # NCTCOG lists each RTC meeting's agenda and full packet ("Agenda (including all meeting
+    # materials)"); the date comes from the file name, e.g. agendapacketrtc11052026.pdf.
+    urls:
+      - https://www.nctcog.org/trans/about/committees/regional-transportation-council
+    link_pattern: '/getContentAsset/.+\.pdf'
+    link_text_pattern: '^Agenda'
+    meeting_name: Regional Transportation Council
+    max_links: 60
+
+  - name: Dallas County
+    type: civicweb
+    base_url: https://dallascounty.civicweb.net
+    meeting_types: ["Commissioners Court", "Commissioners Court - Special Called Session"]
+    # html = agenda item titles (~200 KB, available right away); pdf = the full agenda with
+    # every briefing (often 100+ MB, ~3 min to read; needs max_download_mb above its size).
+    format: both

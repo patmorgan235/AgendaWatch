@@ -31,6 +31,10 @@ _PATTERNS = [
     (re.compile(r"\b(\d{1,2})/(\d{1,2})/(\d{2})\b"), "mdy2"),
     # 20260414 inside a URL or file name
     (re.compile(r"(?<!\d)(20\d{2})(\d{2})(\d{2})(?!\d)"), "ymd"),
+    # 11-05-2026 / 1-23-2025 inside a file name
+    (re.compile(r"(?<!\d)(\d{1,2})-(\d{1,2})-(20\d{2})(?!\d)"), "mdy"),
+    # 11052026 (MMDDYYYY) inside a file name
+    (re.compile(r"(?<!\d)(0[1-9]|1[0-2])([0-2]\d|3[01])(20\d{2})(?!\d)"), "mdy"),
 ]
 
 
