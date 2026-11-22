@@ -93,6 +93,10 @@ def _process(doc: Document, store: Store, http: Http, terms, settings: dict, run
     st.read += 1
     if note and "scanned" in note:
         st.notes.append(f"{doc.title} ({doc.meeting_date}): {note}")
+    elif doc.inline_text is None and sum(len(p) for p in pages) < 200:
+        # Usually a link that returns an interstitial or error page instead of the agenda
+        # (Frisco's "Downloading, please wait…" page was one).
+        st.notes.append(f"{doc.title} ({doc.meeting_date}): almost no text ({sum(len(p) for p in pages)} characters) — check the link")
 
     hits, _counts = find_hits(
         pages, terms,

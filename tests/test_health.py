@@ -115,3 +115,11 @@ def test_lead_time_and_stale_over_simulated_days(tmp_path):
     # a source that errors is reported as failing, not stale
     st = status(run(c, http=FakeHttp({PAGE: FetchError("HTTP 403")}), today=quiet + timedelta(days=1)))
     assert st.error and not st.stale and st.failing_runs == 1
+
+
+def test_near_empty_document_is_noted(tmp_path):
+    c = cfg(tmp_path)
+    r = {PAGE: page((1, date(2026, 9, 3)))}
+    r["https://city.example/a/1.pdf"] = "<html><title>Downloading, Please wait...</title></html>"
+    st = status(run(c, http=FakeHttp(r), today=date(2026, 9, 1)))
+    assert any("almost no text" in n for n in st.notes)

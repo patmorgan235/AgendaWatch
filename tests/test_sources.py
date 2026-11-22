@@ -375,3 +375,14 @@ def test_source_note_reaches_status():
     srcs = build_sources([{"name": "R", "type": "link_page", "urls": ["https://x.example/"],
                            "note": "Fallback; notice is short."}], FakeHttp({}))
     assert srcs[0].note == "Fallback; notice is short."
+
+
+def test_link_page_url_rewrite():
+    url = "https://agenda.example/OnBaseAgendaOnline/Meetings/Search?dropid=4&mtids=0"
+    page = ('<table><tr><td>City Council</td><td>12/1/2026</td><td><a href="/OnBaseAgendaOnline/Documents/'
+            'DownloadFile/CC_5760_Agenda_12_1_2026.pdf?documentType=1&amp;meetingId=5760">Agenda</a></td></tr></table>')
+    src = LinkPageSource(name="F", city="F", http=FakeHttp({url: page}), urls=[url], name_cell=0,
+                         link_pattern=r"/DownloadFile/[^?]+\.pdf\?documentType=1&",
+                         url_rewrite=["/DownloadFile/", "/DownloadFileBytes/"])
+    [d] = src.list_documents(START, END)
+    assert "/DownloadFileBytes/CC_5760_Agenda_12_1_2026.pdf" in d.url and d.meeting_date == date(2026, 12, 1)

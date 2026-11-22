@@ -55,7 +55,8 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(out, ensure_ascii=False)
 
 
-def run_job(cfg: dict, storage: Storage, today: date | None = None, http=None) -> int:
+def run_job(cfg: dict, storage: Storage, today: date | None = None, http=None,
+            backfill_days: int | None = None) -> int:
     settings = cfg.setdefault("settings", {})
     terms = [t if isinstance(t, str) else t["name"] for t in cfg["terms"]]
     t0 = time.time()
@@ -70,7 +71,9 @@ def run_job(cfg: dict, storage: Storage, today: date | None = None, http=None) -
             settings["database"] = str(db)
             settings["report_dir"] = str(site)
 
-            res = run(cfg, http=http, today=today)
+            if backfill_days:
+                log.info("backfill: looking back %d days this run", backfill_days)
+            res = run(cfg, backfill_days=backfill_days, http=http, today=today)
 
             retention = settings.get("page_retention_days")
             if retention:

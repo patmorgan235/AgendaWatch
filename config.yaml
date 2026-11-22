@@ -375,6 +375,8 @@ sources:
     urls:
       - https://agenda.friscotexas.gov/OnBaseAgendaOnline/Meetings/Search?dropid=4&mtids=0
     link_pattern: '/OnBaseAgendaOnline/Documents/DownloadFile/[^?]+\.pdf\?documentType=1&'   # 1 = agenda (2 = minutes)
+    # DownloadFile returns a "Downloading, please wait…" page whose script loads DownloadFileBytes.
+    url_rewrite: ['/DownloadFile/', '/DownloadFileBytes/']
     name_cell: 0
     skip_undated: true
     max_links: 60

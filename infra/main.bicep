@@ -225,7 +225,7 @@ resource job 'Microsoft.App/jobs@2024-03-01' = {
         parallelism: 1
         replicaCompletionCount: 1
       }
-      replicaTimeout: 7200          // 2 hours; a full run takes well under one
+      replicaTimeout: 14400         // 4 hours: daily runs take minutes, a 90-day backfill about an hour
       replicaRetryLimit: 0          // a failed run is retried by tomorrow's schedule, not in a loop
       registries: isPlaceholder ? [] : [
         { server: registry.properties.loginServer, identity: jobIdentity.id }

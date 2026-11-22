@@ -229,6 +229,7 @@ class LinkPageSource(Source):
     skip_undated: bool = False        # ignore links with no date (e.g. old archive files)
     exclude_pattern: str | None = None  # skip links whose table row / list item matches this
     name_cell: int | None = None      # take the meeting name from this table cell (0 = first column)
+    url_rewrite: list[str] | None = None  # [regex, replacement] applied to each document link
     months_back: int = 1
     max_links: int = 60
     platform: str = "web page"
@@ -301,6 +302,9 @@ class LinkPageSource(Source):
             raise SourceError("; ".join(dict.fromkeys(errors))[:300])
         if errors:
             self.notes.append(f"{len(errors)} page(s) couldn't be read")
+        if self.url_rewrite:
+            pattern, repl = self.url_rewrite
+            candidates = {re.sub(pattern, repl, h): c for h, c in candidates.items()}
         docs = []
         # Filter by date before capping, so a long archive on one page can't crowd out another page.
         for href, ctx in candidates.items():
