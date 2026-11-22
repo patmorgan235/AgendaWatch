@@ -1,6 +1,6 @@
 # AgendaWatch — Project Plan
 
-_Last updated: November 22, 2026_
+_Last updated: November 22, 2026 (Phases 0–3 complete; next: Phase 4)_
 
 ## Goal
 
@@ -16,17 +16,21 @@ A searchable history of past agenda items is useful but secondary.
 - The site is **public**.
 - The project owner maintains the term list and the source configuration.
 
-## Where we are (November 2026)
+## Where we are (November 22, 2026)
 
-- A Python tool reads 42 agenda sources daily, searches them for transit terms, and writes a
-  local HTML report.
-- Report sections: DART member cities, DCTA member cities, Trinity Metro member & associate
-  cities, Regional (RTC), Counties, and Eligible to join a transit agency.
-- Platforms supported: Legistar, CivicClerk, CivicWeb, CivicPlus Agenda Center and Archive
-  Center, destinyhosted/eAgenda, Granicus ViewPublisher, Docs Published (Fort Worth), OnBase
-  Agenda Online (Frisco), and generic link pages and document tables.
-- Each passage is reported once, by meeting. Amended agendas only surface genuinely new text.
-- Runs from a local machine; the report is a local file.
+- **Live:** https://agendawatchbcfoiznunxe4.z21.web.core.windows.net/
+  - Updated daily at 11:00 UTC (5 AM CST / 6 AM CDT) by an Azure Container Apps job.
+  - The site has filters (upcoming only, new since your last visit, section, city, term, search), an Atom feed (`feed.xml`), a calendar feed (`upcoming.ics`) and the raw data (`data.json`).
+- **Coverage:** 43 sources (42 bodies; Richardson has two sources). Report sections: DART member cities, DCTA member cities, Trinity Metro member & associate cities, Regional (RTC), Counties, and Eligible to join a transit agency.
+- **Platforms supported:**
+  - Legistar, CivicClerk, CivicWeb;
+  - CivicPlus Agenda Center and Archive Center;
+  - destinyhosted/eAgenda, Granicus ViewPublisher, Swagit;
+  - Docs Published (Fort Worth), OnBase Agenda Online (Frisco);
+  - generic link pages and document tables.
+- **Reading:** scanned agendas are read with OCR. Each passage is reported once per meeting, so an amended agenda only surfaces genuinely new text.
+- **Delivery:** pushes to `main` run the tests and deploy automatically through GitHub Actions. An email alert fires if a day passes without a successful run.
+- **Local use:** the tool still runs locally (`agenda_watch.py run`) and writes the same site into `reports/`.
 
 ### Known gaps
 
@@ -34,10 +38,11 @@ A searchable history of past agenda items is useful but secondary.
 |---|---|
 | Transit agency boards not watched | DART, Trinity Metro and DCTA boards, plus NCTCOG's Surface Transportation Technical Committee (STTC), which vets items before the RTC. |
 | Blocked sources | Irving, Tarrant County, Grand Prairie, The Colony, Burleson, Prosper, Allen and Saginaw sit behind Cloudflare challenges, Municode Meetings, or token-only AgendaLink APIs. |
+| Blocked from the cloud only | Richardson's cor.net (Swagit fallback gives shorter notice) and Hurst (no fallback) return 403 to Azure addresses; see the hybrid fetch in the backlog. |
 | Unresolved sources | Arlington (its agenda list is loaded by script), Rockwall and Corinth (sites unreachable). |
 | Titles only | Fort Worth, Dallas County's HTML agenda, and Dallas Legistar with attachments off give item titles but not staff reports. |
 | ~~Report hides earlier finds~~ | Fixed in Phase 1: the page shows every match for meetings in the window. |
-| No push delivery | Nobody is told when something new appears. |
+| Limited push delivery | The RSS/Atom and calendar feeds exist (Phase 1), but there are no email or Slack alerts for new matches (Later). |
 | No lead-time measurement | We don't know how many days of notice each source actually gives. |
 | Silent source drift | Plano and Fort Worth changed platforms in 2026 without notice; nothing flags a source that goes quiet. |
 
@@ -174,14 +179,18 @@ so it came first.
 - The site serves all files with the right content types.
 
 **Found and fixed after the first run:**
-- The container ran on UTC, so the "updated" time showed 10:06 PM for a 4:06 PM run. The image now sets `TZ=America/Chicago`.
-- `Microsoft.App` wasn't registered on the subscription; `deploy.sh` now registers missing providers.
+- **Wrong times:** the container ran on UTC, so the "updated" time showed 10:06 PM for a 4:06 PM run. The image and the job now set `TZ=America/Chicago`. Verified: the next run published `generated 16:39` for a run that ended at 22:39 UTC.
+- **Unregistered provider:** `Microsoft.App` wasn't registered on the subscription. `deploy.sh` now registers missing providers; the what-if preview had missed this.
+- **No OCR:** the image had no OCR, so scanned agendas weren't read. OCR (`ocrmypdf`) is now built in by default, and the image grows from 197 MB to 446 MB. Tested on Richardson's scanned Bicycle and Pedestrian Advisory Committee agenda: 0 → 2,573 characters, in 3 seconds. Agendas already read without OCR are re-read only if their file changes.
+- **GitHub sign-in failed:** the first automatic deploy couldn't sign in to Azure. GitHub issued its token with the immutable-ID subject `repo:patmorgan235@2245348/AgendaWatch@1467803098:ref:refs/heads/main`, but only the classic `repo:patmorgan235/AgendaWatch:…` form was registered. The template now registers both, and `deploy.sh` looks up the IDs with `gh`. Verified: the next push (`c77d417`) tested, built and pushed the image, and updated the job automatically.
 
-- The image had no OCR, so scanned agendas weren't read. OCR (`ocrmypdf`) is now built in by default; the image grows from 197 MB to 446 MB. Tested on Richardson's scanned Bicycle and Pedestrian Advisory Committee agenda: 0 → 2,573 characters, in 3 seconds. Agendas already read without OCR are only re-read if their file changes.
+**Current state:**
+- The job runs image `agendawatch:c77d417`.
+- An incremental run, which reuses the saved database, takes about 2 minutes. A run starting with no database took 12 minutes.
 
 ### Phase 4 — Operations and reliability
 
-- [ ] An alert when a run fails.
+- [x] An alert when a run fails. Done in Phase 3: an email fires when no run has logged a successful `run_finished` event in 26 hours, which covers crashes, hangs, a stuck lock, every source failing, and the job not starting.
 - [ ] **Stale-source check:** flag any source with no new agendas in 30 days (configurable) in the report and logs.
 - [ ] **Lead time per source:** median days between first seeing an agenda and its meeting, shown in the Sources table.
 - [ ] A source-health history (listed, read, failed, errors) kept across runs.
