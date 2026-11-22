@@ -52,6 +52,36 @@ Fort Worth is the full member; the others are partial/associate members through 
 
 Tarrant County isn't included: its agendas are only in an AgendaLink portal whose data API requires a token embedded in the app.
 
+**Eligible to join a transit agency**
+
+Cities that could join DART (they border a DART member city), Trinity Metro (they border Fort Worth) or DCTA (they're in Denton County) by referendum, but haven't. Borders were checked against Census TIGERweb boundaries in November 2026.
+
+| City | Eligible for | Platform |
+|---|---|---|
+| Coppell | DART | Legistar (`coppell`) |
+| McKinney | DART | Legistar (`mckinney`) |
+| Keller | Trinity Metro | Legistar (`cityofkeller`) |
+| Mesquite | DART | CivicPlus Agenda Center |
+| DeSoto | DART | CivicPlus Agenda Center |
+| Haltom City | Trinity Metro | CivicPlus Agenda Center |
+| Benbrook | Trinity Metro | CivicPlus Agenda Center |
+| Cedar Hill | DART | destinyhosted eAgenda |
+| Lancaster | DART | destinyhosted eAgenda |
+| Little Elm | DCTA | destinyhosted eAgenda |
+| Duncanville | DART | CivicClerk |
+| Euless | DART, Trinity Metro | CivicClerk |
+| Sachse | DART | CivicClerk |
+| Crowley | Trinity Metro | CivicClerk |
+| White Settlement | Trinity Metro | CivicClerk |
+| Watauga | Trinity Metro | CivicClerk |
+| Flower Mound | DCTA | CivicClerk |
+| Celina | DCTA | CivicClerk |
+| Murphy | DART | CivicWeb |
+| Frisco | DART, DCTA | OnBase Agenda Online |
+| Hurst | Trinity Metro | agenda table on the city site |
+
+Not read yet: Grand Prairie, The Colony, Burleson and Prosper post through Municode Meetings, which refuses the tool (Cloudflare challenge / dropped connections); Allen and Saginaw use an AgendaLink portal whose API needs a token embedded in the app; Arlington's agenda list is loaded by script; Rockwall's and Corinth's sites didn't respond.
+
 Terms: DART, Dallas Area Rapid Transit, Transit, GMP, General Mobility Program, DCTA, Denton County Transportation Authority, Trinity Metro, Paratransit, Streetcar.
 
 ## Setup (once)
@@ -85,7 +115,7 @@ python agenda_watch.py run --backfill 90 --open
 python agenda_watch.py run --open
 ```
 
-The report is saved to `reports/agenda-report-YYYY-MM-DD.html`, and `reports/latest.html` always holds the newest one. It has a block for each section (DART member cities, DCTA member cities, Trinity Metro member & associate cities, Regional, Counties), each with:
+The report is saved to `reports/agenda-report-YYYY-MM-DD.html`, and `reports/latest.html` always holds the newest one. It has a block for each section (DART member cities, DCTA member cities, Trinity Metro member & associate cities, Regional, Counties, Eligible to join a transit agency), each with:
 
 - **New mentions** — matches not seen in any earlier report, grouped by meeting, with the surrounding text and a link that opens the PDF at the right page.
 - **Upcoming meetings that mention your terms** — every posted future agenda with a match, new or not.

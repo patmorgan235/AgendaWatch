@@ -226,6 +226,7 @@ class LinkPageSource(Source):
     meeting_name: str | None = None   # use this instead of guessing the meeting name from the page
     skip_undated: bool = False        # ignore links with no date (e.g. old archive files)
     exclude_pattern: str | None = None  # skip links whose table row / list item matches this
+    name_cell: int | None = None      # take the meeting name from this table cell (0 = first column)
     months_back: int = 1
     max_links: int = 60
     platform: str = "web page"
@@ -257,9 +258,15 @@ class LinkPageSource(Source):
             href = urljoin(page_url, a["href"])
             text = a.get_text(" ", strip=True)
             if href_re.search(href) and (not text_re or text_re.search(text)):
-                row = a.find_parent(["tr", "li", "article"]) or a.parent
+                # Prefer the table row: a link in a row's dropdown list still belongs to that meeting.
+                row = a.find_parent("tr") or a.find_parent(["li", "article"]) or a.parent
                 context = row.get_text(" ", strip=True) if row else text
-                found.append((href, f"{context} || {text} || {href}"))
+                cell = ""
+                if self.name_cell is not None and row is not None and row.name == "tr":
+                    cells = row.find_all(["td", "th"], recursive=False)
+                    if len(cells) > self.name_cell:
+                        cell = cells[self.name_cell].get_text(" ", strip=True)
+                found.append((href, f"{context} || {text} || {href} || {cell}"))
             elif follow_re and follow_re.search(href):
                 follow.append(href)
         return found, follow
@@ -304,13 +311,19 @@ class LinkPageSource(Source):
             mdate = parse_date(row_text) or parse_date(unquote(href))
             if mdate is None and self.skip_undated:
                 continue
+            cell = ctx.split(" || ")[3] if ctx.count(" || ") >= 3 else ""
             if self.meeting_name:
                 body = self.meeting_name
+            elif cell:
+                body = re.sub(r"\s+", " ", cell).replace("&amp;", "&")[:80]
             else:
-                body = re.sub(r"\b(Video|Agenda|Minutes|Packet|Download|Previous Versions)\b|▼", "", row_text)
+                body = re.sub(r"[—–-]\s*(?:Posted|Amended|Updated)\s+(?:[A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4}\s+)?\d{1,2}:\d{2}\s*[AP]M",
+                              "", row_text, flags=re.I)
+                body = re.sub(r"\b(Video|Agenda|Minutes|Packet|Download|Previous Versions|Stream|HTML|PDF)\b|▼", "", body, flags=re.I)
+                body = re.sub(r"\(\s*\)", "", body)
                 body = re.sub(r"\b\d{1,2}-\d{1,2}-\d{4}\b", "", body)
                 body = re.sub(r"[A-Za-z]{3,9}\.? \d{1,2},? \d{4}|\d{1,2}/\d{1,2}/\d{2,4}|\d{1,2}h \d{2}m|\d{1,2}m \d{2}s", "", body)
-                body = re.sub(r"\s+", " ", body).strip(" -|·") or "Meeting"
+                body = re.sub(r"\s+", " ", body).strip(" -|·,") or "Meeting"
                 body = body[:80]
             if _in_window(mdate, start, end) and _body_allowed(body, self.bodies):
                 docs.append(Document(self.name, self.city, body, mdate, f"{body} agenda", href, "agenda"))
@@ -520,7 +533,7 @@ class CivicWebSource(Source):
     platform: str = "CivicWeb"
 
     _LINK = re.compile(r'<a[^>]+href="(/filepro/documents/\d+|/document/\d+)[^"]*"[^>]*>(.*?)</a>', re.S | re.I)
-    _NAME = re.compile(r"^(?P<body>.+?)\s*-\s*(?P<date>[A-Za-z]{3,9}\.? \d{1,2},? \d{4})\s*-\s*Agenda\s*-\s*(?P<fmt>Html|Pdf)\s*$", re.I)
+    _NAME = re.compile(r"^(?P<body>.+?)\s*-\s*(?P<date>[^-]*?\d{4})\s*-\s*Agenda\s*-\s*(?P<fmt>Html|Pdf)\s*$", re.I)
 
     def _links(self, path: str) -> list[tuple[str, str]]:
         html = self.http.get_text(urljoin(self.base_url, path))

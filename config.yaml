@@ -241,3 +241,150 @@ sources:
 
   # Tarrant County: its agendas are only in an AgendaLink portal whose API needs a token
   # embedded in the app, so it isn't read here. See README.
+
+  # ---------------------------------------------------------------- Eligible to join a transit agency
+  # Cities that could join a transit authority by referendum but haven't:
+  #   DART: borders a DART member city (Transportation Code ch. 452, subch. O)
+  #   Trinity Metro: borders Fort Worth;  DCTA: in Denton County (ch. 460)
+  # Adjacency checked against Census TIGERweb boundaries, Nov 2026.
+  - name: Coppell
+    type: legistar
+    client: coppell      # eligible for DART
+    section: Eligible to join a transit agency
+  - name: McKinney
+    type: legistar
+    client: mckinney      # eligible for DART
+    section: Eligible to join a transit agency
+  - name: Keller
+    type: legistar
+    client: cityofkeller      # eligible for Trinity Metro
+    section: Eligible to join a transit agency
+  - name: Mesquite
+    type: link_page       # CivicPlus Agenda Center; eligible for DART
+    urls:
+      - https://www.cityofmesquite.com/AgendaCenter
+    link_pattern: '/AgendaCenter/ViewFile/Agenda/_\d{8}-\d+(\?packet=true)?$'   # agenda + packet, not the HTML copy
+    exclude_pattern: 'municipal court|cancel+ed'
+    skip_undated: true
+    max_links: 60
+    section: Eligible to join a transit agency
+  - name: DeSoto
+    type: link_page       # CivicPlus Agenda Center; eligible for DART
+    urls:
+      - https://www.desototexas.gov/AgendaCenter
+    link_pattern: '/AgendaCenter/ViewFile/Agenda/_\d{8}-\d+(\?packet=true)?$'   # agenda + packet, not the HTML copy
+    exclude_pattern: 'municipal court|cancel+ed'
+    skip_undated: true
+    max_links: 60
+    section: Eligible to join a transit agency
+  - name: Haltom City
+    type: link_page       # CivicPlus Agenda Center; eligible for Trinity Metro
+    urls:
+      - https://www.haltomcitytx.com/AgendaCenter
+    link_pattern: '/AgendaCenter/ViewFile/Agenda/_\d{8}-\d+(\?packet=true)?$'   # agenda + packet, not the HTML copy
+    exclude_pattern: 'municipal court|cancel+ed'
+    skip_undated: true
+    max_links: 60
+    section: Eligible to join a transit agency
+  - name: Benbrook
+    type: link_page       # CivicPlus Agenda Center; eligible for Trinity Metro
+    urls:
+      - https://www.benbrook-tx.gov/AgendaCenter
+    link_pattern: '/AgendaCenter/ViewFile/Agenda/_\d{8}-\d+(\?packet=true)?$'   # agenda + packet, not the HTML copy
+    exclude_pattern: 'municipal court|cancel+ed'
+    skip_undated: true
+    max_links: 60
+    section: Eligible to join a transit agency
+  - name: Cedar Hill
+    type: link_page       # destinyhosted eAgenda (same software as Collin County); eligible for DART
+    urls:
+      - https://destinyhosted.com/agenda_publish.cfm?id=23327
+      - https://destinyhosted.com/agenda_publish.cfm?id=23327&mt=ALL&get_month={month}&get_year={year}&dsp=ag&seq=
+    months_back: 1
+    link_pattern: 'agenda_publish\.cfm\?.*dsp=ag&seq=\d+'
+    skip_undated: true
+    max_links: 30
+    section: Eligible to join a transit agency
+  - name: Lancaster
+    type: link_page       # destinyhosted eAgenda (same software as Collin County); eligible for DART
+    urls:
+      - https://destinyhosted.com/agenda_publish.cfm?id=52622
+      - https://destinyhosted.com/agenda_publish.cfm?id=52622&mt=ALL&get_month={month}&get_year={year}&dsp=ag&seq=
+    months_back: 1
+    link_pattern: 'agenda_publish\.cfm\?.*dsp=ag&seq=\d+'
+    skip_undated: true
+    max_links: 30
+    section: Eligible to join a transit agency
+  - name: Little Elm
+    type: link_page       # destinyhosted eAgenda (same software as Collin County); eligible for DCTA
+    urls:
+      - https://destinyhosted.com/agenda_publish.cfm?id=54885
+      - https://destinyhosted.com/agenda_publish.cfm?id=54885&mt=ALL&get_month={month}&get_year={year}&dsp=ag&seq=
+    months_back: 1
+    link_pattern: 'agenda_publish\.cfm\?.*dsp=ag&seq=\d+'
+    skip_undated: true
+    max_links: 30
+    section: Eligible to join a transit agency
+  - name: Duncanville
+    type: civicclerk
+    tenant: duncanvilletx      # eligible for DART
+    section: Eligible to join a transit agency
+  - name: Euless
+    type: civicclerk
+    tenant: eulesstx      # eligible for DART and Trinity Metro
+    section: Eligible to join a transit agency
+  - name: Sachse
+    type: civicclerk
+    tenant: sachsetx      # eligible for DART
+    section: Eligible to join a transit agency
+  - name: Crowley
+    type: civicclerk
+    tenant: crowleytx      # eligible for Trinity Metro
+    section: Eligible to join a transit agency
+  - name: White Settlement
+    type: civicclerk
+    tenant: whitesettlementtx      # eligible for Trinity Metro
+    section: Eligible to join a transit agency
+  - name: Watauga
+    type: civicclerk
+    tenant: wataugatx      # eligible for Trinity Metro
+    section: Eligible to join a transit agency
+  - name: Flower Mound
+    type: civicclerk
+    tenant: flowermoundtx      # eligible for DCTA
+    section: Eligible to join a transit agency
+  - name: Celina
+    type: civicclerk
+    tenant: celinatx      # eligible for DCTA
+    section: Eligible to join a transit agency
+  - name: Murphy
+    type: civicweb        # eligible for DART
+    base_url: https://murphytx.civicweb.net
+    meeting_types: ["City Council"]
+    section: Eligible to join a transit agency
+
+  - name: Frisco
+    type: link_page       # OnBase Agenda Online; eligible for DART and DCTA
+    urls:
+      - https://agenda.friscotexas.gov/OnBaseAgendaOnline/Meetings/Search?dropid=4&mtids=0
+    link_pattern: '/OnBaseAgendaOnline/Documents/DownloadFile/[^?]+\.pdf\?documentType=1&'   # 1 = agenda (2 = minutes)
+    name_cell: 0
+    skip_undated: true
+    max_links: 60
+    section: Eligible to join a transit agency
+
+  - name: Hurst
+    type: link_page       # table on the city's site (date | Agenda | Packet); eligible for Trinity Metro
+    urls:
+      - https://www.hursttx.gov/about-us/agendas-and-minutes/agendas-and-minutes-{year}
+    months_back: 1
+    link_pattern: '/home/showpublisheddocument/\d+/\d+'
+    link_text_pattern: '^(agenda|packet)\b'
+    exclude_pattern: 'cancel'
+    skip_undated: true
+    max_links: 40
+    section: Eligible to join a transit agency
+
+  # Not read (see README): Grand Prairie, The Colony, Burleson, Prosper (Municode Meetings
+  # refuses the tool / Cloudflare challenge); Allen, Saginaw (AgendaLink API needs an embedded
+  # token); Arlington (agenda list loads by script); Rockwall, Corinth (site unreachable).

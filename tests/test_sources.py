@@ -265,16 +265,18 @@ def test_civicweb_document_center():
         f"{base}/filepro/documents/1040992":
             a("/document/1066462", "Commissioners Court - Nov 17 2026 - Agenda - Html")
             + a("/document/1066461", "Commissioners Court - Nov 17 2026 - Agenda - Pdf")
-            + a("/document/1064083", "Commissioners Court - Sep 01 2026 - Agenda - Html"),
+            + a("/document/1064083", "Commissioners Court - Sep 01 2026 - Agenda - Html")
+            + a("/document/1066470", "Commissioners Court - Special Called Session - 24 Nov 2026 - Agenda - Html"),
     })
     src = CivicWebSource(name="Dallas County", city="Dallas County", http=http, base_url=base)
     docs = src.list_documents(START, END)
     assert [(d.meeting_date, d.body, d.url) for d in docs] == [
         (date(2026, 11, 17), "Commissioners Court", f"{base}/document/1066462"),
+        (date(2026, 11, 24), "Commissioners Court - Special Called Session", f"{base}/document/1066470"),
     ]  # Pdf skipped by default, Sep 1 outside the window, 2025 folder not opened
     assert f"{base}/filepro/documents/1011482" not in http.calls
     both = CivicWebSource(name="DC", city="DC", http=http, base_url=base, format="both")
-    assert len(both.list_documents(START, END)) == 2
+    assert len(both.list_documents(START, END)) == 3
 
 
 def test_link_page_caps_after_date_filter():
@@ -353,3 +355,17 @@ def test_granicus_upcoming_and_archived():
         (date(2026, 12, 1), "Commissioners Court", "https://dc.granicus.com/AgendaViewer.php?view_id=26&event_id=812"),
         (date(2026, 11, 17), "Commissioners Court", "https://dc.granicus.com/AgendaViewer.php?view_id=26&clip_id=2102"),
     ]  # minutes ignored, 2025 meeting outside the window
+
+
+def test_link_page_name_from_table_cell():
+    url = "https://agenda.example/OnBaseAgendaOnline/Meetings/Search?dropid=4&mtids=0"
+    page = """<table>
+    <tr><td>City Council Regular Meeting</td><td>City Council</td><td>12/1/2026 5:00:00 PM</td>
+        <td><a href="/OnBaseAgendaOnline/Documents/DownloadFile/City_Council_Regular_Meeting_5760_Agenda_12_1_2026_5_00_00_PM.pdf?documentType=1&amp;meetingId=5760">Agenda</a></td></tr>
+    <tr><td>Planning &amp; Zoning Commission Meeting</td><td>Planning and Zoning Commission</td><td>11/23/2026 6:30:00 PM</td>
+        <td><a href="/OnBaseAgendaOnline/Documents/DownloadFile/PZ_5751_Minutes_11_23_2026.pdf?documentType=3&amp;meetingId=5751">Minutes</a></td></tr>
+    </table>"""
+    src = LinkPageSource(name="Frisco", city="Frisco", http=FakeHttp({url: page}), urls=[url],
+                         link_pattern=r"/DownloadFile/[^?]+\.pdf\?documentType=1&", name_cell=0, skip_undated=True)
+    docs = src.list_documents(START, END)
+    assert [(d.meeting_date, d.body) for d in docs] == [(date(2026, 12, 1), "City Council Regular Meeting")]
