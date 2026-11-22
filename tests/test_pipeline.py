@@ -1,12 +1,15 @@
 """End-to-end: list → download → extract → match → dedupe → report."""
 
+import json
+import xml.etree.ElementTree as ET
 from datetime import date
 from pathlib import Path
 
 import yaml
 
 from agendawatch.http import FetchError
-from agendawatch.report import build_html, text_summary
+from agendawatch.report import build_html, text_summary, write_report
+from agendawatch.site import build_data, render_atom, render_ics
 from agendawatch.runner import run
 
 from helpers import FakeHttp, make_pdf
@@ -71,23 +74,32 @@ def test_full_run_dedupes_and_reports(tmp_path):
     assert "503" in by_status["Addison"].error  # one broken site doesn't stop the run
     assert len(res.upcoming) == 2
 
+    data = build_data(res, ["DART"])
+    dallas = next(m for m in data["meetings"] if m["city"] == "Dallas")
+    assert dallas["body"] == "Transportation and Infrastructure Committee" and dallas["section"] == "DART member cities"
+    assert dallas["upcoming"] and all(x["new"] for x in dallas["matches"])
+    assert any(x["link"] == "https://d/agenda1.pdf#page=2" and x["hit"] == "DART" for x in dallas["matches"])
+    assert next(m for m in data["meetings"] if m["city"] == "Plano")["section"] == "DCTA member cities"
+    assert data["sections"][:2] == ["DART member cities", "DCTA member cities"]
+    assert "503" in next(s for s in data["sources"] if s["name"] == "Addison")["error"]
+
     html = build_html(res, ["DART"])
-    assert "<mark>DART</mark>" in html and "#page=2" in html and "Transportation and Infrastructure" in html
-    assert "couldn't be read today" in html
+    embedded = html.split('<script id="data" type="application/json">')[1].split("</script>")[0]
+    assert json.loads(embedded)["meetings"][0]["id"] == data["meetings"][0]["id"]
+
     summary = text_summary(res)
     assert "new mention" in summary
     assert summary.index("DART member cities") < summary.index("Dallas —") < summary.index("DCTA member cities") < summary.index("Plano —")
-
-    # Each section gets its own block, in config order, holding its own meetings.
-    dart_at, dcta_at = html.index(">DART member cities</h2>"), html.index(">DCTA member cities</h2>")
-    assert dart_at < html.index("Transportation and Infrastructure") < dcta_at < html.index("Plano · City Council")
-    assert "Other sources" not in html.split(">Sources</h2>")[0]
 
     # Second run, nothing changed: no new matches, nothing re-extracted.
     res2 = run(cfg, http=FakeHttp(routes(pdf)), today=TODAY)
     assert res2.new_matches == []
     assert {s.name: s.unchanged for s in res2.statuses}["Dallas"] == 2
     assert len(res2.upcoming) == 2  # still listed as upcoming
+    # ...but the report still shows everything for meetings in the window, now marked not-new.
+    data2 = build_data(res2, ["DART"])
+    assert {m["id"] for m in data2["meetings"]} == {m["id"] for m in data["meetings"]}
+    assert not any(x["new"] for m in data2["meetings"] for x in m["matches"])
 
     # Amended agenda re-posted: the old items aren't re-reported, the new one is.
     amended = make_pdf([AGENDA_P1, AGENDA_P2 + "\nItem 15. DART Silver Line update"])
@@ -104,3 +116,27 @@ def test_past_meetings_are_not_redownloaded(tmp_path):
     later = FakeHttp(routes(pdf))
     run(cfg, http=later, today=date(2026, 11, 20))
     assert "https://d/agenda1.pdf" not in later.calls
+
+
+def test_site_files_and_feeds(tmp_path):
+    cfg = config(tmp_path)
+    res = run(cfg, http=FakeHttp(routes(make_pdf([AGENDA_P1, AGENDA_P2]))), today=TODAY)
+    out = write_report(res, ["DART"], tmp_path / "site", site_url="https://agendas.example.org/")
+    site = out.parent
+    for name in ("index.html", "latest.html", "data.json", "feed.xml", "upcoming.ics", "agenda-report-2026-10-31.html"):
+        assert (site / name).exists(), name
+    data = json.loads((site / "data.json").read_text())
+    assert data["site_url"] == "https://agendas.example.org"
+
+    ns = {"a": "http://www.w3.org/2005/Atom"}
+    feed = ET.fromstring(render_atom(data))
+    entries = feed.findall("a:entry", ns)
+    assert len(entries) == 2  # Dallas committee + Plano council, each first seen today
+    assert all(e.find("a:link", ns).get("href").startswith("https://agendas.example.org/#m-") for e in entries)
+    assert len({e.find("a:id", ns).text for e in entries}) == 2
+
+    ics = render_ics(data)
+    assert ics.startswith("BEGIN:VCALENDAR\r\n") and ics.endswith("END:VCALENDAR\r\n")
+    assert ics.count("BEGIN:VEVENT") == 2 and "DTSTART;VALUE=DATE:20261104" in ics
+    assert all(len(line.encode()) <= 75 for line in ics.split("\r\n"))
+    assert "SUMMARY:Dallas: Transportation and Infrastructure Committee — " in ics

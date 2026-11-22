@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """agenda-watch — search local government agendas for key terms and write a daily report.
 
-  python agenda_watch.py run              daily run: check agendas, write reports/latest.html
+  python agenda_watch.py run              daily run: check agendas, write the site in reports/
   python agenda_watch.py run --backfill 90   first run: also look back 90 days
   python agenda_watch.py check            show what each city's source finds (no downloads)
   python agenda_watch.py search "bus rapid transit"   search every agenda already downloaded
@@ -44,7 +44,7 @@ def load_config(path: str) -> dict:
 def cmd_run(args, cfg) -> int:
     res = run(cfg, backfill_days=args.backfill)
     terms = [t if isinstance(t, str) else t["name"] for t in cfg["terms"]]
-    path = write_report(res, terms, cfg["settings"]["report_dir"])
+    path = write_report(res, terms, cfg["settings"]["report_dir"], cfg["settings"].get("site_url"))
     print()
     print(text_summary(res))
     print(f"\nReport: {path}")

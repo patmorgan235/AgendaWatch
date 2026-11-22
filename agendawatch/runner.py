@@ -41,6 +41,9 @@ class RunResult:
     new_matches: list
     upcoming: list
     previous_run: str | None
+    window_matches: list = field(default_factory=list)   # every match for meetings in start..end
+    run_started: str | None = None
+    today: date | None = None
 
 
 def make_http(settings: dict) -> Http:
@@ -132,6 +135,9 @@ def run(config: dict, backfill_days: int | None = None, http: Http | None = None
             new_matches=store.matches_for_run(run_id),
             upcoming=store.upcoming_with_matches(today),
             previous_run=store.previous_run_time(run_id),
+            window_matches=store.matches_in_window(start, end),
+            run_started=store.run_started(run_id),
+            today=today,
         )
     finally:
         store.close()

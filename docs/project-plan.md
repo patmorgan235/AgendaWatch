@@ -36,7 +36,7 @@ A searchable history of past agenda items is useful but secondary.
 | Blocked sources | Irving, Tarrant County, Grand Prairie, The Colony, Burleson, Prosper, Allen and Saginaw sit behind Cloudflare challenges, Municode Meetings, or token-only AgendaLink APIs. |
 | Unresolved sources | Arlington (its agenda list is loaded by script), Rockwall and Corinth (sites unreachable). |
 | Titles only | Fort Worth, Dallas County's HTML agenda, and Dallas Legistar with attachments off give item titles but not staff reports. |
-| Report hides earlier finds | Matches found by an earlier run don't appear in later reports, even for meetings still in the window (`matches_for_run` only returns the current run's matches). |
+| ~~Report hides earlier finds~~ | Fixed in Phase 1: the page shows every match for meetings in the window. |
 | No push delivery | Nobody is told when something new appears. |
 | No lead-time measurement | We don't know how many days of notice each source actually gives. |
 | Silent source drift | Plano and Fort Worth changed platforms in 2026 without notice; nothing flags a source that goes quiet. |
@@ -91,23 +91,23 @@ so it comes first.
 
 **Done when:** a table records which sources work from Azure, and the hosting decision is confirmed or revised.
 
-### Phase 1 — Report data and static site (local, no cloud)
+### Phase 1 — Report data and static site (local, no cloud) ✅ done Nov 22, 2026
 
-- [ ] **`data.json` export:**
+- [x] **`data.json` export:**
   - every match for meetings in the report window, with `first_seen`, section, city, body, meeting date, term, snippet and links;
   - upcoming meetings with matches;
   - per-source status.
-- [ ] **Static page** that renders from `data.json`:
+- [x] **Static page** that renders from `data.json`:
   - filter to upcoming meetings only;
   - filter by section, city and term;
   - "new since your last visit" (stored in the browser), defaulting to "new since the last run";
   - sort by meeting date and show the days remaining ("in 6 days");
   - mobile-friendly layout;
   - shareable links to a single meeting.
-- [ ] **RSS/Atom feed** of new matches.
-- [ ] **Calendar (.ics) feed** of upcoming meetings that mention a term.
-- [ ] **Footer:** a link to each official posting, the "confirm against the official agenda" disclaimer, and the time of the last run.
-- [ ] Keep the existing single-file HTML report working for local use.
+- [x] **RSS/Atom feed** of new matches.
+- [x] **Calendar (.ics) feed** of upcoming meetings that mention a term.
+- [x] **Footer:** a link to each official posting, the "confirm against the official agenda" disclaimer, and the time of the last run.
+- [x] Keep the existing single-file HTML report working for local use.
 
 **Done when:** running the tool twice in a row still shows every in-window match; the upcoming-only filter works; the feeds validate.
 

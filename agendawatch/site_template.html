@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Agenda Watch — transit items on North Texas agendas</title>
+<link rel="alternate" type="application/atom+xml" title="Agenda Watch: new transit mentions" href="feed.xml">
+<style>
+:root{--bg:#f7f6f2;--card:#fff;--ink:#1d2327;--muted:#5d6670;--line:#e3e0d8;--accent:#0b6e4f;
+--mark:#ffe58a;--markink:#1d2327;--chip:#e8f1ec;--chipink:#0b5a41;--new:#b4361a;--newbg:#fdeee8;
+--warn:#9a3412;--focus:#2563eb;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#14171a;--card:#1c2126;--ink:#e7eaed;--muted:#9aa4ae;
+--line:#2c333a;--accent:#4fc39a;--mark:#6b5a12;--markink:#fff6cf;--chip:#1f3a30;--chipink:#9fe3c6;
+--new:#ffb59e;--newbg:#3d2219;--warn:#fdba74;--focus:#93c5fd;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.wrap{max-width:960px;margin:0 auto;padding:24px 16px 64px}
+header h1{font-size:1.6rem;margin:0 0 4px;letter-spacing:-.01em}
+header p{margin:0;color:var(--muted)}
+.controls{position:sticky;top:0;z-index:5;background:var(--bg);padding:12px 0;margin:16px 0 8px;border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center}
+.controls label{display:inline-flex;gap:6px;align-items:center;font-size:.92rem}
+.controls select,.controls input[type=search]{font:inherit;font-size:.92rem;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);max-width:100%}
+.controls input[type=search]{min-width:12rem;flex:1}
+.terms{display:flex;flex-wrap:wrap;gap:6px;width:100%}
+.termbtn{font:inherit;font-size:.82rem;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:3px 10px;cursor:pointer}
+.termbtn[aria-pressed=true]{background:var(--chip);color:var(--chipink);border-color:var(--chipink);font-weight:600}
+.summary{color:var(--muted);font-size:.9rem;margin:6px 0 0}
+h2{font-size:1.2rem;margin:34px 0 12px;padding-bottom:6px;border-bottom:2px solid var(--accent)}
+.meeting{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:0 0 12px;scroll-margin-top:140px}
+.meeting.target{box-shadow:0 0 0 3px var(--focus)}
+.meeting h3{margin:0;font-size:1.05rem}
+.meta{color:var(--muted);font-size:.9rem;margin:2px 0 8px;display:flex;flex-wrap:wrap;gap:4px 12px}
+.when{font-weight:600;color:var(--ink)}
+.past .when{color:var(--muted);font-weight:400}
+.hit{border-top:1px solid var(--line);padding:8px 0 2px}
+.hit:first-of-type{border-top:0}
+.chip{display:inline-block;background:var(--chip);color:var(--chipink);border-radius:999px;padding:1px 10px;font-size:.8rem;font-weight:600;margin-right:6px}
+.badge-new{display:inline-block;background:var(--newbg);color:var(--new);border-radius:6px;padding:0 6px;font-size:.75rem;font-weight:700;margin-left:6px;letter-spacing:.03em}
+.page{font-size:.82rem;text-decoration:none}
+.snip{margin:4px 0 0;overflow-wrap:anywhere}
+mark{background:var(--mark);color:var(--markink);padding:0 2px;border-radius:3px}
+.more{font:inherit;font-size:.85rem;background:none;border:0;color:var(--accent);cursor:pointer;padding:4px 0}
+.empty{background:var(--card);border:1px dashed var(--line);border-radius:12px;padding:16px;color:var(--muted)}
+details{margin-top:36px}
+summary{cursor:pointer;font-weight:600}
+.tablewrap{overflow-x:auto;margin-top:10px}
+table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);font-size:.88rem}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:600;font-size:.78rem;text-transform:uppercase;letter-spacing:.04em}
+.err{color:var(--warn)}
+.note{color:var(--muted);font-size:.82rem}
+footer{margin-top:36px;color:var(--muted);font-size:.85rem}
+footer p{margin:4px 0}
+@media (max-width:600px){.controls{position:static}.wrap{padding-top:16px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Agenda Watch</h1>
+  <p>Transit items on North Texas local government agendas, found before the meetings.</p>
+  <p class="note" id="stamp"></p>
+</header>
+
+<div class="controls" role="search" aria-label="Filter meetings">
+  <label><input type="checkbox" id="f-upcoming" checked> Upcoming meetings only</label>
+  <label><input type="checkbox" id="f-new"> <span id="f-new-label">New only</span></label>
+  <label>Section <select id="f-section"><option value="">All sections</option></select></label>
+  <label>City / body <select id="f-city"><option value="">All</option></select></label>
+  <input type="search" id="f-q" placeholder="Search snippets, cities, meetings…" aria-label="Search">
+  <div class="terms" id="f-terms" aria-label="Terms"></div>
+  <p class="summary" id="summary" aria-live="polite"></p>
+</div>
+
+<main id="results"></main>
+
+<details id="sources-wrap">
+  <summary>Sources checked in the last run</summary>
+  <div class="tablewrap"><table id="sources"><thead><tr><th>Source</th><th>Section</th><th>Platform</th>
+  <th>Agendas</th><th>Read</th><th>New</th><th>Status</th></tr></thead><tbody></tbody></table></div>
+</details>
+
+<footer>
+  <p>Subscribe: <a href="feed.xml">new mentions (Atom/RSS)</a> · <a href="upcoming.ics">upcoming meetings (calendar)</a> · <a href="data.json">data (JSON)</a></p>
+  <p>Agenda Watch searches publicly posted agendas automatically. Snippets can miss context and agendas change — always confirm against the official posted agenda linked on each meeting.</p>
+  <p id="foot-run"></p>
+</footer>
+</div>
+
+<script id="data" type="application/json">/*__DATA__*/null</script>
+<script>
+(function () {
+  "use strict";
+  var DATA = JSON.parse(document.getElementById("data").textContent);
+  var VISIT_KEY = "agendawatch.lastVisit";
+  var SNIPPETS_SHOWN = 4;
+
+  // ---- helpers -------------------------------------------------------------
+  function el(tag, attrs, children) {
+    var n = document.createElement(tag);
+    if (attrs) Object.keys(attrs).forEach(function (k) {
+      if (k === "text") n.textContent = attrs[k];
+      else if (k === "class") n.className = attrs[k];
+      else n.setAttribute(k, attrs[k]);
+    });
+    (children || []).forEach(function (c) { if (c != null) n.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
+    return n;
+  }
+  function store(get, val) {
+    try { return get ? localStorage.getItem(VISIT_KEY) : localStorage.setItem(VISIT_KEY, val); } catch (e) { return null; }
+  }
+  function localToday() {
+    var d = new Date(); return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  }
+  function parseDay(iso) { var p = iso.split("-"); return new Date(+p[0], +p[1] - 1, +p[2]); }
+  function fmtDay(iso) {
+    if (!iso) return "Date unknown";
+    return parseDay(iso).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+  }
+  function relDay(iso) {
+    if (!iso) return "";
+    var n = Math.round((parseDay(iso) - localToday()) / 86400000);
+    if (n === 0) return "today";
+    if (n === 1) return "tomorrow";
+    if (n === -1) return "yesterday";
+    return n > 0 ? "in " + n + " days" : Math.abs(n) + " days ago";
+  }
+  function isUpcoming(m) { return !m.date || parseDay(m.date) >= localToday(); }
+
+  // ---- "new since your last visit" ----------------------------------------
+  var lastVisit = store(true);
+  function isNew(x) { return lastVisit ? x.first_seen > lastVisit : x.new; }
+  document.getElementById("f-new-label").textContent = lastVisit ? "New since your last visit" : "New in the latest run";
+  function remember() { store(false, DATA.generated); }
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") remember(); });
+  window.addEventListener("pagehide", remember);
+
+  // ---- controls -------------------------------------------------------------
+  var fUp = document.getElementById("f-upcoming"), fNew = document.getElementById("f-new"),
+      fSec = document.getElementById("f-section"), fCity = document.getElementById("f-city"),
+      fQ = document.getElementById("f-q"), fTerms = document.getElementById("f-terms");
+  var activeTerms = {};
+
+  DATA.sections.forEach(function (s) {
+    if (DATA.meetings.some(function (m) { return m.section === s; })) fSec.appendChild(el("option", { value: s, text: s }));
+  });
+  function fillCities() {
+    var keep = fCity.value, seen = {};
+    while (fCity.options.length > 1) fCity.remove(1);
+    DATA.meetings.filter(function (m) { return !fSec.value || m.section === fSec.value; })
+      .map(function (m) { return m.city; }).sort().forEach(function (c) {
+        if (!seen[c]) { seen[c] = 1; fCity.appendChild(el("option", { value: c, text: c })); }
+      });
+    fCity.value = seen[keep] ? keep : "";
+  }
+  DATA.terms.forEach(function (t) {
+    var b = el("button", { type: "button", class: "termbtn", "aria-pressed": "false", text: t });
+    b.addEventListener("click", function () {
+      activeTerms[t] = !activeTerms[t];
+      b.setAttribute("aria-pressed", activeTerms[t] ? "true" : "false");
+      update();
+    });
+    fTerms.appendChild(b);
+  });
+
+  // filters <-> URL query, so a filtered view can be shared
+  function readQuery() {
+    var q = new URLSearchParams(location.search);
+    if (q.get("upcoming") === "0") fUp.checked = false;
+    if (q.get("new") === "1") fNew.checked = true;
+    if (q.get("section")) fSec.value = q.get("section");
+    fillCities();
+    if (q.get("city")) fCity.value = q.get("city");
+    if (q.get("q")) fQ.value = q.get("q");
+    (q.get("terms") || "").split(",").filter(Boolean).forEach(function (t) {
+      activeTerms[t] = true;
+      Array.prototype.forEach.call(fTerms.children, function (b) { if (b.textContent === t) b.setAttribute("aria-pressed", "true"); });
+    });
+  }
+  function writeQuery() {
+    var q = new URLSearchParams();
+    if (!fUp.checked) q.set("upcoming", "0");
+    if (fNew.checked) q.set("new", "1");
+    if (fSec.value) q.set("section", fSec.value);
+    if (fCity.value) q.set("city", fCity.value);
+    if (fQ.value) q.set("q", fQ.value);
+    var t = Object.keys(activeTerms).filter(function (k) { return activeTerms[k]; });
+    if (t.length) q.set("terms", t.join(","));
+    var s = q.toString();
+    try { history.replaceState(null, "", (s ? "?" + s : location.pathname) + location.hash); } catch (e) { /* file:// in some browsers */ }
+  }
+
+  // ---- rendering ------------------------------------------------------------
+  function hitMatches(x, needle) {
+    return !needle || (x.before + x.hit + x.after).toLowerCase().indexOf(needle) >= 0;
+  }
+  function filtered() {
+    var needle = fQ.value.trim().toLowerCase();
+    var terms = Object.keys(activeTerms).filter(function (k) { return activeTerms[k]; });
+    var out = [];
+    DATA.meetings.forEach(function (m) {
+      if (fUp.checked && !isUpcoming(m)) return;
+      if (fSec.value && m.section !== fSec.value) return;
+      if (fCity.value && m.city !== fCity.value) return;
+      var meetText = (m.city + " " + m.body).toLowerCase();
+      var hits = m.matches.filter(function (x) {
+        if (terms.length && terms.indexOf(x.term) < 0) return false;
+        if (fNew.checked && !isNew(x)) return false;
+        return !needle || meetText.indexOf(needle) >= 0 || hitMatches(x, needle);
+      });
+      if (hits.length) out.push({ m: m, hits: hits });
+    });
+    out.sort(function (a, b) {
+      var ua = isUpcoming(a.m), ub = isUpcoming(b.m);
+      if (ua !== ub) return ua ? -1 : 1;
+      var da = a.m.date || "9999", db = b.m.date || "9999";
+      return ua ? (da < db ? -1 : da > db ? 1 : 0) : (da > db ? -1 : da < db ? 1 : 0);
+    });
+    return out;
+  }
+  function card(item) {
+    var m = item.m, hits = item.hits;
+    var docs = m.documents.map(function (d) {
+      var label = d.kind === "items" ? "Agenda items" : d.kind === "packet" ? "Packet" : "Agenda";
+      return el("a", { href: d.kind === "items" && d.detail_url ? d.detail_url : d.url, rel: "noopener", text: label });
+    });
+    var detail = m.documents.filter(function (d) { return d.detail_url && d.kind !== "items"; })[0];
+    if (detail) docs.push(el("a", { href: detail.detail_url, rel: "noopener", text: "Meeting page" }));
+    var meta = el("div", { class: "meta" }, [
+      el("span", { class: "when", text: fmtDay(m.date) + (m.date ? " · " + relDay(m.date) : "") }),
+      el("span", { text: m.terms.join(", ") })
+    ].concat(docs));
+    var anyNew = hits.some(isNew);
+    var title = el("h3", null, [m.city + " · " + m.body, anyNew ? el("span", { class: "badge-new", text: "NEW" }) : null]);
+    var box = el("section", { class: "meeting" + (isUpcoming(m) ? "" : " past"), id: "m-" + m.id }, [title, meta]);
+    var list = el("div");
+    hits.forEach(function (x, i) {
+      var page = x.page && x.link.indexOf("#page=") > 0 ? el("a", { class: "page", href: x.link, rel: "noopener", text: "page " + x.page }) : null;
+      var row = el("div", { class: "hit" }, [
+        el("span", { class: "chip", text: x.term }), page, isNew(x) ? el("span", { class: "badge-new", text: "NEW" }) : null,
+        el("p", { class: "snip" }, [x.before, el("mark", { text: x.hit }), x.after])
+      ]);
+      if (i >= SNIPPETS_SHOWN) row.hidden = true;
+      list.appendChild(row);
+    });
+    box.appendChild(list);
+    if (hits.length > SNIPPETS_SHOWN) {
+      var more = el("button", { type: "button", class: "more", text: "Show " + (hits.length - SNIPPETS_SHOWN) + " more" });
+      more.addEventListener("click", function () {
+        Array.prototype.forEach.call(list.children, function (r) { r.hidden = false; });
+        more.remove();
+      });
+      box.appendChild(more);
+    }
+    return box;
+  }
+  function update() {
+    fillCities();
+    var items = filtered();
+    var root = document.getElementById("results");
+    root.textContent = "";
+    var nHits = items.reduce(function (n, it) { return n + it.hits.length; }, 0);
+    document.getElementById("summary").textContent =
+      items.length + " meeting" + (items.length === 1 ? "" : "s") + " · " + nHits + " mention" + (nHits === 1 ? "" : "s");
+    if (!items.length) {
+      root.appendChild(el("div", { class: "empty", text: fUp.checked
+        ? "No upcoming meetings match these filters. Untick “Upcoming meetings only” to include recent past meetings."
+        : "No meetings match these filters." }));
+    }
+    var sections = DATA.sections.slice();
+    items.forEach(function (it) { if (sections.indexOf(it.m.section) < 0) sections.push(it.m.section); });
+    sections.forEach(function (s) {
+      var inSec = items.filter(function (it) { return it.m.section === s; });
+      if (!inSec.length) return;
+      root.appendChild(el("h2", { text: s }));
+      inSec.forEach(function (it) { root.appendChild(card(it)); });
+    });
+    writeQuery();
+  }
+  [fUp, fNew, fSec, fCity].forEach(function (c) { c.addEventListener("change", update); });
+  fQ.addEventListener("input", update);
+
+  // ---- header, sources, footer --------------------------------------------
+  function fmtStamp(ts) { return ts ? new Date(ts).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "—"; }
+  document.getElementById("stamp").textContent = "Updated " + fmtStamp(DATA.generated) +
+    " · meetings " + fmtDay(DATA.window.start) + " to " + fmtDay(DATA.window.end) + " · watching for " + DATA.terms.join(", ");
+  document.getElementById("foot-run").textContent = "Last run started " + fmtStamp(DATA.run.started) +
+    (DATA.run.previous ? "; previous run " + fmtStamp(DATA.run.previous) : "") + ".";
+  var tb = document.querySelector("#sources tbody"), bad = 0;
+  DATA.sources.forEach(function (s) {
+    var bits = [];
+    if (s.unchanged) bits.push(s.unchanged + " unchanged");
+    if (s.skipped) bits.push(s.skipped + " already read");
+    if (s.failed) bits.push(s.failed + " failed to download");
+    var status = el("td", null, [s.error ? el("span", { class: "err", text: s.error }) : (bits.join(", ") || "OK")]);
+    (s.notes || []).forEach(function (n) { status.appendChild(el("div", { class: "note", text: n })); });
+    if (s.error) bad++;
+    tb.appendChild(el("tr", null, [el("td", { text: s.name }), el("td", { text: s.section }), el("td", { text: s.platform }),
+      el("td", { text: String(s.listed) }), el("td", { text: String(s.read) }), el("td", { text: String(s.new_matches) }), status]));
+  });
+  if (bad) document.querySelector("#sources-wrap summary").textContent += " — " + bad + " couldn't be read";
+
+  // ---- start ---------------------------------------------------------------
+  readQuery();
+  var target = location.hash.match(/^#m-([0-9a-f]+)$/);
+  if (target) {
+    var m = DATA.meetings.filter(function (x) { return x.id === target[1]; })[0];
+    if (m && !isUpcoming(m)) fUp.checked = false;   // a shared link to a past meeting still shows it
+  }
+  update();
+  if (target) {
+    var node = document.getElementById("m-" + target[1]);
+    if (node) { node.classList.add("target"); node.scrollIntoView(); }
+  }
+})();
+</script>
+</body>
+</html>

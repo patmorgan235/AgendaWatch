@@ -5,7 +5,8 @@ settings:
   lookback_days: 10          # re-check meetings this many days back (late-posted minutes, amendments)
   lookahead_days: 60         # and this far ahead (agendas usually post 3–7 days before a meeting)
   database: data/agenda_watch.db
-  report_dir: reports
+  report_dir: reports       # the site (index.html, data.json, feed.xml, upcoming.ics) is written here
+  # site_url: https://agendas.example.org   # where the site is hosted; makes feed links absolute
   max_download_mb: 250       # skip agenda packets bigger than this (Dallas County PDFs run 100+ MB)
   request_delay_seconds: 1.0 # pause between requests to the same site
   ocr: auto                  # auto = OCR scanned PDFs if ocrmypdf is installed; off = never

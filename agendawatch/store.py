@@ -119,6 +119,22 @@ class Store:
             (run_id,),
         ).fetchall()
 
+    def matches_in_window(self, start: date, end: date) -> list[sqlite3.Row]:
+        """Every match for meetings dated start..end (plus undated agendas first seen since start),
+        no matter which run found it."""
+        return self.db.execute(
+            """SELECT m.*, d.source, d.city, d.body, d.meeting_date, d.title, d.kind, d.detail_url
+               FROM matches m JOIN documents d ON d.url = m.url
+               WHERE (d.meeting_date >= ? AND d.meeting_date <= ?)
+                  OR (d.meeting_date IS NULL AND m.first_seen >= ?)
+               ORDER BY d.meeting_date, d.city, d.body, m.term, m.page""",
+            (start.isoformat(), end.isoformat(), start.isoformat()),
+        ).fetchall()
+
+    def run_started(self, run_id: int) -> str | None:
+        row = self.db.execute("SELECT started FROM runs WHERE id=?", (run_id,)).fetchone()
+        return row["started"] if row else None
+
     def upcoming_with_matches(self, today: date) -> list[sqlite3.Row]:
         return self.db.execute(
             """SELECT d.url, d.source, d.city, d.body, d.meeting_date, d.title, d.kind, d.detail_url,

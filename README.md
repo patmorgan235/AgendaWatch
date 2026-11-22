@@ -115,14 +115,28 @@ python agenda_watch.py run --backfill 90 --open
 python agenda_watch.py run --open
 ```
 
-The report is saved to `reports/agenda-report-YYYY-MM-DD.html`, and `reports/latest.html` always holds the newest one. It has a block for each section (DART member cities, DCTA member cities, Trinity Metro member & associate cities, Regional, Counties, Eligible to join a transit agency), each with:
+Each run writes a small website into `reports/`:
 
-- **New mentions** — matches not seen in any earlier report, grouped by meeting, with the surrounding text and a link that opens the PDF at the right page.
-- **Upcoming meetings that mention your terms** — every posted future agenda with a match, new or not.
+| File | What it is |
+|---|---|
+| `index.html` (also `latest.html`) | The report page. Its data is built in, so it works opened straight from disk or hosted. |
+| `data.json` | Every match for meetings in the report window, grouped by meeting, with when each was first found. |
+| `feed.xml` | Atom/RSS feed of new mentions — subscribe in any feed reader. |
+| `upcoming.ics` | Calendar feed of upcoming meetings whose agendas mention your terms. |
+| `agenda-report-YYYY-MM-DD.html` | That day's snapshot of the page. |
 
-and at the end, **Sources** — what was checked per city, and any site that couldn't be read. Each source's `section:` in `config.yaml` decides where it appears.
+The page shows **every** mention for meetings in the window (10 days back, 60 ahead by default), not just the ones found by the latest run, grouped into sections (DART member cities, DCTA member cities, Trinity Metro member & associate cities, Regional, Counties, Eligible to join a transit agency). You can:
 
-The same passage is never reported twice, even when a city re-posts an amended agenda. Only genuinely new items show up as new.
+- show **upcoming meetings only** (on by default) or include recent past ones;
+- show only what's **new since your last visit** (remembered by your browser; on a first visit, new in the latest run);
+- filter by section, city or meeting body, and term, or search the snippets;
+- share a filtered view (filters are kept in the page's address) or link to one meeting (`#m-…`).
+
+Each meeting shows how many days away it is, which terms it mentions, the matching passages with a link to the right page of the PDF, and links to the agenda, packet and meeting page. **Sources** at the bottom lists what was checked and anything that couldn't be read. Each source's `section:` in `config.yaml` decides where it appears.
+
+The same passage is never reported as new twice, even when a city re-posts an amended agenda.
+
+If the site will be hosted, set `site_url` in `config.yaml` (for example `https://agendas.example.org`) so the feeds contain full links.
 
 ### Search everything downloaded so far
 
@@ -145,7 +159,7 @@ python agenda_watch.py search "bus (rapid|stop)" --regex --city Plano
 schtasks /create /tn "Agenda Watch" /sc daily /st 06:43 /tr "C:\path\to\agenda-watch\.venv\Scripts\python.exe C:\path\to\agenda-watch\agenda_watch.py --quiet run"
 ```
 
-The computer must be on at that time. Open `reports/latest.html` (bookmark it) whenever you want the day's report.
+The computer must be on at that time. Open `reports/index.html` (bookmark it) whenever you want the latest report.
 
 ## Changing terms or cities
 
@@ -179,7 +193,9 @@ agendawatch/sources.py   Legistar, CivicClerk, CivicWeb, NovusAGENDA, link-page 
 agendawatch/extract.py   PDF/HTML → per-page text (OCR when needed)
 agendawatch/matcher.py   term matching, false-positive filters, snippets
 agendawatch/store.py     SQLite: agendas read, page text, matches already reported
-agendawatch/report.py    HTML report + console summary
+agendawatch/site.py      data.json, report page, Atom and calendar feeds
+agendawatch/site_template.html  the report page (filters run in the browser)
+agendawatch/report.py    writes the site; console summary
 tests/                   pytest suite with fixtures modeled on each platform's pages
 ```
 
