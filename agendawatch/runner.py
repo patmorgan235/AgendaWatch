@@ -78,11 +78,28 @@ def _process(doc: Document, store: Store, http: Http, terms, settings: dict, run
         st.skipped += 1
         return
 
+    # A file we couldn't read last time (an unsupported format or a scanned PDF without OCR) is
+    # downloaded and read again even if unchanged: a newer version of the tool may do better.
+    unreadable_before = any(k in (existing["note"] or "") for k in _UNREADABLE) if existing else False
+    read_before = bool(existing and existing["status"] == "ok" and existing["sha256"] and not unreadable_before)
+
+    validators = None
     try:
         if doc.inline_text is not None:
             data, ctype = doc.inline_text.encode("utf-8"), "text/plain"
         else:
-            data, ctype, _ = http.download(doc.url)
+            # Ask the server to skip the body if the file hasn't changed since we read it.
+            dl = http.fetch(doc.url,
+                            etag=existing["etag"] if read_before else None,
+                            last_modified=existing["last_modified"] if read_before else None)
+            if dl.not_modified:
+                st.unchanged += 1
+                # Servers may refresh validators on a 304; keep ours for any they don't resend.
+                store.save_document(doc, None, None, "ok", existing["note"] or "",
+                                    validators=(dl.etag or existing["etag"],
+                                                dl.last_modified or existing["last_modified"]))
+                return
+            data, ctype, validators = dl.body, dl.content_type, (dl.etag, dl.last_modified)
     except FetchError as exc:
         st.failed += 1
         store.save_document(doc, None, None, "error", str(exc))
@@ -90,17 +107,22 @@ def _process(doc: Document, store: Store, http: Http, terms, settings: dict, run
         return
 
     sha = hashlib.sha256(data).hexdigest()
-    # Same file as last time: skip it — unless last time we couldn't read it (an unsupported format or
-    # a scanned PDF without OCR), in which case a newer version of the tool may do better.
-    unreadable_before = any(k in (existing["note"] or "") for k in _UNREADABLE) if existing else False
-    if existing and existing["status"] == "ok" and existing["sha256"] == sha and not unreadable_before:
+    if read_before and existing["sha256"] == sha:
         st.unchanged += 1
-        store.save_document(doc, sha, None, "ok", existing["note"] or "")
+        store.save_document(doc, sha, None, "ok", existing["note"] or "", validators=validators)
         return
 
-    pages, note = extract_pages(data, ctype, ocr=str(settings.get("ocr", "auto")))
-    store.save_document(doc, sha, pages, "ok", note)
-    st.read += 1
+    try:
+        pages, note = extract_pages(data, ctype, ocr=str(settings.get("ocr", "auto")))
+    except Exception as exc:  # noqa: BLE001 - a corrupt or mislabeled file shouldn't stop the run
+        # Saved as an error, so the next run downloads and tries it again.
+        st.failed += 1
+        msg = f"couldn't read the file: {type(exc).__name__}: {exc}"
+        store.save_document(doc, None, None, "error", msg)
+        st.notes.append(f"{doc.title} ({doc.meeting_date}): {msg}")
+        log.warning("  ! %s: %s", doc.title, msg)
+        return
+    store.save_document(doc, sha, pages, "ok", note, validators=validators)
     if note and "scanned" in note:
         st.notes.append(f"{doc.title} ({doc.meeting_date}): {note}")
     elif doc.inline_text is None and sum(len(p) for p in pages) < 200:
@@ -115,9 +137,26 @@ def _process(doc: Document, store: Store, http: Http, terms, settings: dict, run
     )
     scope = f"{doc.city}|{doc.meeting_date}"
     new = store.add_hits(doc.url, hits, run_id, scope)
+    st.read += 1   # counted here so a failure above counts as failed only
     st.new_matches += new
     if new:
         log.info("  + %d new match(es) in %s %s (%s)", new, doc.city, doc.title, doc.meeting_date)
+
+
+def _contain(exc: Exception, doc: Document, store: Store, st: SourceStatus) -> None:
+    """Record an unexpected per-document failure so the document is downloaded and read again next run."""
+    st.failed += 1
+    msg = f"{type(exc).__name__}: {exc}"
+    st.notes.append(f"{doc.title} ({doc.meeting_date}): {msg}")
+    log.exception("  ! %s: unexpected error", doc.title)
+    # The document may already be saved as read (sha and validators stored) before its matches were;
+    # left that way, the next run would see it as unchanged and never record them.
+    store.db.rollback()
+    try:
+        store.save_document(doc, None, None, "error", msg)
+    except Exception:  # noqa: BLE001 - don't let the bookkeeping hide the original error
+        store.db.rollback()
+        log.exception("  ! %s: couldn't record the error", doc.title)
 
 
 def _apply_health(statuses: list[SourceStatus], health: dict, today: date, default_stale: int) -> None:
@@ -159,6 +198,8 @@ def run(config: dict, backfill_days: int | None = None, http: Http | None = None
 
     run_id = store.start_run()
     statuses: list[SourceStatus] = []
+    attempted = 0
+    unexpected: list[Exception] = []
     try:
         for src in sources:
             st = SourceStatus(src.name, src.city, src.platform, section=src.section,
@@ -178,7 +219,16 @@ def run(config: dict, backfill_days: int | None = None, http: Http | None = None
             st.listed = len(docs)
             log.info("  %d agenda(s) in window", len(docs))
             for doc in docs:
-                _process(doc, store, http, terms, settings, run_id, st, today)
+                attempted += 1
+                try:
+                    _process(doc, store, http, terms, settings, run_id, st, today)
+                except Exception as exc:  # noqa: BLE001 - one bad agenda shouldn't stop the others
+                    unexpected.append(exc)
+                    _contain(exc, doc, store, st)
+        if attempted and len(unexpected) == attempted and len({type(e) for e in unexpected}) == 1:
+            # Every agenda of every source failed the same way: almost certainly a bug, not bad data.
+            first = unexpected[0]
+            raise RuntimeError(f"all {attempted} agenda(s) failed with {type(first).__name__}: {first}") from first
         store.finish_run(run_id)
         for st in statuses:
             store.record_source_run(run_id, st)

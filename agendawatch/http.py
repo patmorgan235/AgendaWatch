@@ -1,8 +1,9 @@
-"""Polite HTTP client: retries, per-host throttling, download size cap."""
+"""Polite HTTP client: retries, per-host throttling, download size cap, conditional downloads."""
 
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass
 from urllib.parse import urlparse
 
 import requests
@@ -31,6 +32,37 @@ BROWSER_HEADERS = {
 
 class FetchError(Exception):
     """Raised when a page or file can't be retrieved."""
+
+
+@dataclass
+class Download:
+    """A downloaded file, or (not_modified=True, empty body) the server's word that it hasn't changed."""
+
+    body: bytes
+    content_type: str
+    url: str
+    etag: str | None = None
+    last_modified: str | None = None
+    not_modified: bool = False
+
+
+def conditional_headers(etag: str | None, last_modified: str | None) -> dict[str, str]:
+    headers = {}
+    if etag:
+        headers["If-None-Match"] = etag
+    if last_modified:
+        headers["If-Modified-Since"] = last_modified
+    return headers
+
+
+@dataclass
+class _Response:
+    status: int
+    body: bytes
+    content_type: str
+    url: str
+    charset: str | None
+    headers: dict[str, str]
 
 
 class Http:
@@ -68,6 +100,11 @@ class Http:
     def _is_browser_host(self, url: str) -> bool:
         return urlparse(url).netloc.lower() in self._browser_hosts
 
+    def _headers_for(self, url: str, extra: dict[str, str] | None = None) -> dict[str, str] | None:
+        headers = dict(self._host_headers.get(urlparse(url).netloc.lower(), {}))
+        headers.update(extra or {})
+        return headers or None
+
     def _h2_client(self):
         if self._h2 is None:
             try:
@@ -80,11 +117,12 @@ class Http:
             self._h2 = httpx.Client(http2=True, follow_redirects=True, timeout=self.timeout)
         return self._h2
 
-    def _browser_fetch(self, url: str, params: dict | None = None) -> tuple[bytes, str, str, str | None]:
-        """Return (body, content_type, final_url, charset) fetched over HTTP/2."""
+    def _browser_fetch(self, url: str, params: dict | None = None,
+                       extra_headers: dict[str, str] | None = None) -> _Response:
+        """Fetch over HTTP/2. A 304 comes back as an empty response with status 304."""
         client = self._h2_client()  # raises a helpful FetchError if httpx isn't installed
         import httpx
-        headers = self._host_headers.get(urlparse(url).netloc.lower(), {})
+        headers = self._headers_for(url, extra_headers) or {}
         host = urlparse(url).netloc
         for attempt in range(4):
             self._throttle(url)
@@ -93,9 +131,13 @@ class Http:
                     if resp.status_code in (429, 500, 502, 503, 504) and attempt < 3:
                         time.sleep(1.5 * 2 ** attempt)
                         continue
+                    resp_headers = {k.lower(): v for k, v in resp.headers.items()}
+                    ctype = resp_headers.get("content-type", "").lower()
+                    if resp.status_code == 304 and extra_headers:
+                        return _Response(304, b"", ctype, str(resp.url), None, resp_headers)
                     if resp.status_code != 200:
                         raise FetchError(f"HTTP {resp.status_code} for {resp.url}")
-                    declared = resp.headers.get("Content-Length")
+                    declared = resp_headers.get("content-length")
                     if declared and declared.isdigit() and int(declared) > self.max_bytes:
                         raise FetchError(f"File is {int(declared) // (1024 * 1024)} MB, over the size limit")
                     chunks, total = [], 0
@@ -104,8 +146,8 @@ class Http:
                         if total > self.max_bytes:
                             raise FetchError("File exceeded the size limit while downloading")
                         chunks.append(chunk)
-                    ctype = resp.headers.get("Content-Type", "").lower()
-                    return b"".join(chunks), ctype, str(resp.url), resp.charset_encoding
+                    return _Response(200, b"".join(chunks), ctype, str(resp.url), resp.charset_encoding,
+                                     resp_headers)
             except httpx.ConnectError as exc:
                 raise FetchError(f"couldn't connect to {host} (site down, or blocked on this network)") from exc
             except httpx.TimeoutException as exc:
@@ -123,12 +165,13 @@ class Http:
                 time.sleep(wait)
         self._last_hit[host] = time.monotonic()
 
-    def get(self, url: str, params: dict | None = None, stream: bool = False) -> requests.Response:
+    def get(self, url: str, params: dict | None = None, stream: bool = False,
+            headers: dict[str, str] | None = None, ok_statuses: tuple[int, ...] = (200,)) -> requests.Response:
         self._throttle(url)
         try:
             resp = self.session.get(
                 url, params=params, timeout=self.timeout, stream=stream, allow_redirects=True,
-                headers=self._host_headers.get(urlparse(url).netloc.lower()),
+                headers=self._headers_for(url, headers),
             )
         except requests.ConnectionError as exc:
             host = urlparse(url).netloc
@@ -137,15 +180,15 @@ class Http:
             raise FetchError(f"{urlparse(url).netloc} timed out") from exc
         except requests.RequestException as exc:
             raise FetchError(f"{type(exc).__name__}: {exc}") from exc
-        if resp.status_code != 200:
+        if resp.status_code not in ok_statuses:
             resp.close()
             raise FetchError(f"HTTP {resp.status_code} for {resp.url}")
         return resp
 
     def get_text(self, url: str, params: dict | None = None) -> str:
         if self._is_browser_host(url):
-            body, _, _, charset = self._browser_fetch(url, params)
-            return body.decode(charset or "utf-8", errors="replace")
+            r = self._browser_fetch(url, params)
+            return r.body.decode(r.charset or "utf-8", errors="replace")
         resp = self.get(url, params=params)
         if not resp.encoding or resp.encoding.lower() == "iso-8859-1":
             resp.encoding = resp.apparent_encoding or "utf-8"
@@ -155,24 +198,34 @@ class Http:
         if self._is_browser_host(url):
             import json
 
-            body, _, final, _ = self._browser_fetch(url, params)
+            r = self._browser_fetch(url, params)
             try:
-                return json.loads(body)
+                return json.loads(r.body)
             except ValueError as exc:
-                raise FetchError(f"Response from {final} was not JSON") from exc
+                raise FetchError(f"Response from {r.url} was not JSON") from exc
         resp = self.get(url, params=params)
         try:
             return resp.json()
         except ValueError as exc:
             raise FetchError(f"Response from {resp.url} was not JSON") from exc
 
-    def download(self, url: str) -> tuple[bytes, str, str]:
-        """Return (body, content_type, final_url), refusing files over max_bytes."""
+    def fetch(self, url: str, etag: str | None = None, last_modified: str | None = None) -> Download:
+        """Download a file, refusing files over max_bytes.
+
+        With `etag` / `last_modified` from an earlier download, asks the server to skip the body
+        if the file hasn't changed; a 304 reply comes back as Download(not_modified=True).
+        """
+        cond = conditional_headers(etag, last_modified)
         if self._is_browser_host(url):
-            body, ctype, final, _ = self._browser_fetch(url)
-            return body, ctype, final
-        resp = self.get(url, stream=True)
+            r = self._browser_fetch(url, extra_headers=cond)
+            return Download(r.body, r.content_type, r.url, r.headers.get("etag"), r.headers.get("last-modified"),
+                            not_modified=r.status == 304)
+        resp = self.get(url, stream=True, headers=cond, ok_statuses=(200, 304) if cond else (200,))
         ctype = resp.headers.get("Content-Type", "").lower()
+        new_etag, new_lm = resp.headers.get("ETag"), resp.headers.get("Last-Modified")
+        if resp.status_code == 304:
+            resp.close()
+            return Download(b"", ctype, resp.url, new_etag or etag, new_lm or last_modified, not_modified=True)
         declared = resp.headers.get("Content-Length")
         if declared and declared.isdigit() and int(declared) > self.max_bytes:
             resp.close()
@@ -188,4 +241,9 @@ class Http:
             raise FetchError(f"Download interrupted: {exc}") from exc
         finally:
             resp.close()
-        return b"".join(chunks), ctype, resp.url
+        return Download(b"".join(chunks), ctype, resp.url, new_etag, new_lm)
+
+    def download(self, url: str) -> tuple[bytes, str, str]:
+        """Return (body, content_type, final_url), refusing files over max_bytes."""
+        d = self.fetch(url)
+        return d.body, d.content_type, d.url
