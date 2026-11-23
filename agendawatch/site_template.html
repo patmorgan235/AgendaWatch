@@ -54,7 +54,36 @@ tr.flag td{background:var(--newbg)}
 .note{color:var(--muted);font-size:.82rem}
 footer{margin-top:36px;color:var(--muted);font-size:.85rem}
 footer p{margin:4px 0}
-@media (max-width:600px){.controls{position:static}.wrap{padding-top:16px}}
+.viewtoggle{display:inline-flex;gap:4px}
+.viewtoggle .termbtn{font-size:.9rem;padding:4px 14px}
+.controls label.off{opacity:.5}
+.addcal{font-size:.85rem}
+.cal-head{display:flex;align-items:center;gap:8px;margin:22px 0 10px;flex-wrap:wrap}
+.cal-head h2{margin:0;padding:0;border:0;flex:1;min-width:10rem}
+.navbtn{font:inherit;font-size:.9rem;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:4px 12px;cursor:pointer}
+.navbtn:disabled{opacity:.4;cursor:default}
+.cal-grid{display:flex;flex-direction:column;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.cal-row{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:1px}
+.cal-dow{background:var(--card);color:var(--muted);font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;text-align:center;padding:6px 0}
+.cal-cell{background:var(--card);min-height:96px;padding:4px 5px 6px;cursor:pointer;display:flex;flex-direction:column;gap:2px;min-width:0}
+.cal-cell:hover{background:var(--bg)}
+.cal-cell.out{background:var(--bg);color:var(--muted)}
+.cal-cell.out .pill{opacity:.7}
+.cal-cell[aria-selected=true]{box-shadow:inset 0 0 0 2px var(--focus)}
+.cal-cell:focus-visible{outline-offset:-3px}
+.daynum{font-size:.8rem;font-weight:600;align-self:flex-start;min-width:1.7em;padding:0 4px;text-align:center;border-radius:999px}
+.cal-cell.today .daynum{background:var(--accent);color:var(--card)}
+.pill{display:block;font-size:.72rem;line-height:1.4;background:var(--chip);color:var(--chipink);border-radius:4px;padding:0 5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pill.isnew{box-shadow:inset 3px 0 0 var(--new)}
+.cal-more{font-size:.72rem;color:var(--muted);padding-left:2px}
+.cal-dot{display:none}
+#day-panel h2 .note{font-weight:400;margin-left:8px}
+.linkbtn{font:inherit;font-size:.85rem;background:none;border:0;color:var(--accent);cursor:pointer;padding:0;text-decoration:underline}
+@media (max-width:600px){.controls{position:static}.wrap{padding-top:16px}
+.cal-cell{min-height:50px;align-items:center;padding:4px 2px}.daynum{align-self:center}
+.pill,.cal-more{display:none}
+.cal-dot{display:inline-block;min-width:1.5em;font-size:.7rem;font-weight:700;text-align:center;background:var(--chip);color:var(--chipink);border-radius:999px}
+.cal-dot.isnew{background:var(--newbg);color:var(--new)}}
 </style>
 </head>
 <body>
@@ -66,7 +95,11 @@ footer p{margin:4px 0}
 </header>
 
 <div class="controls" role="search" aria-label="Filter meetings">
-  <label><input type="checkbox" id="f-upcoming" checked> Upcoming meetings only</label>
+  <div class="viewtoggle" role="group" aria-label="View">
+    <button type="button" class="termbtn" id="v-list" aria-pressed="true">List</button>
+    <button type="button" class="termbtn" id="v-cal" aria-pressed="false">Calendar</button>
+  </div>
+  <label id="f-upcoming-label"><input type="checkbox" id="f-upcoming" checked> Upcoming meetings only</label>
   <label><input type="checkbox" id="f-new"> <span id="f-new-label">New only</span></label>
   <label>Section <select id="f-section"><option value="">All sections</option></select></label>
   <label>City / body <select id="f-city"><option value="">All</option></select></label>
@@ -131,6 +164,16 @@ footer p{margin:4px 0}
     return n > 0 ? "in " + n + " days" : Math.abs(n) + " days ago";
   }
   function isUpcoming(m) { return !m.date || parseDay(m.date) >= localToday(); }
+  function pad(n) { return (n < 10 ? "0" : "") + n; }
+  function isoOf(d) { return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
+  function firstOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
+  function addDays(d, n) { return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n); }
+  function addMonths(d, n) { return new Date(d.getFullYear(), d.getMonth() + n, 1); }
+  function sameMonth(a, b) { return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth(); }
+  function pref(key, val) {   // per-viewer convenience only; the page works without storage
+    try { return val === undefined ? localStorage.getItem(key) : localStorage.setItem(key, val); } catch (e) { return null; }
+  }
+  function plural(n, word) { return n + " " + word + (n === 1 ? "" : "s"); }
 
   // ---- "new since your last visit" ----------------------------------------
   var lastVisit = store(true);
@@ -145,6 +188,25 @@ footer p{margin:4px 0}
       fSec = document.getElementById("f-section"), fCity = document.getElementById("f-city"),
       fQ = document.getElementById("f-q"), fTerms = document.getElementById("f-terms");
   var activeTerms = {};
+  var VIEW_KEY = "agendawatch.view";
+  var vList = document.getElementById("v-list"), vCal = document.getElementById("v-cal"),
+      fUpLabel = document.getElementById("f-upcoming-label");
+  var view = "list";            // "list" | "calendar"
+  var calMonth = firstOfMonth(localToday());
+  var calDay = "";              // selected day (YYYY-MM-DD) in the calendar, or "" for the whole month
+  var pendingFocus = "";        // day cell to focus after the next render (keyboard navigation)
+  var pendingNav = "";          // or the month arrow ("prev" | "next") that triggered it
+  // Months the calendar can show: the report window, plus this month.
+  var minMonth = firstOfMonth(new Date(Math.min(parseDay(DATA.window.start), localToday())));
+  var maxMonth = firstOfMonth(new Date(Math.max(parseDay(DATA.window.end), localToday())));
+  function clampMonth(d) { return d < minMonth ? minMonth : d > maxMonth ? maxMonth : d; }
+  function setView(v) {
+    view = v === "calendar" ? "calendar" : "list";
+    vList.setAttribute("aria-pressed", view === "list" ? "true" : "false");
+    vCal.setAttribute("aria-pressed", view === "calendar" ? "true" : "false");
+  }
+  vList.addEventListener("click", function () { setView("list"); pref(VIEW_KEY, "list"); update(); });
+  vCal.addEventListener("click", function () { setView("calendar"); pref(VIEW_KEY, "calendar"); update(); });
 
   DATA.sections.forEach(function (s) {
     if (DATA.meetings.some(function (m) { return m.section === s; })) fSec.appendChild(el("option", { value: s, text: s }));
@@ -171,6 +233,13 @@ footer p{margin:4px 0}
   // filters <-> URL query, so a filtered view can be shared
   function readQuery() {
     var q = new URLSearchParams(location.search);
+    setView(q.get("view") || pref(VIEW_KEY) || "list");
+    if (/^\d{4}-\d{2}-\d{2}$/.test(q.get("day") || "")) {
+      calDay = q.get("day");
+      calMonth = firstOfMonth(parseDay(calDay));
+    }
+    if (/^\d{4}-\d{2}$/.test(q.get("month") || "")) calMonth = parseDay(q.get("month") + "-01");
+    calMonth = clampMonth(calMonth);
     if (q.get("upcoming") === "0") fUp.checked = false;
     if (q.get("new") === "1") fNew.checked = true;
     if (q.get("section")) fSec.value = q.get("section");
@@ -184,6 +253,11 @@ footer p{margin:4px 0}
   }
   function writeQuery() {
     var q = new URLSearchParams();
+    if (view === "calendar") {
+      q.set("view", "calendar");
+      q.set("month", isoOf(calMonth).slice(0, 7));
+      if (calDay) q.set("day", calDay);
+    }
     if (!fUp.checked) q.set("upcoming", "0");
     if (fNew.checked) q.set("new", "1");
     if (fSec.value) q.set("section", fSec.value);
@@ -199,12 +273,12 @@ footer p{margin:4px 0}
   function hitMatches(x, needle) {
     return !needle || (x.before + x.hit + x.after).toLowerCase().indexOf(needle) >= 0;
   }
-  function filtered() {
+  function filtered(ignoreUpcoming) {
     var needle = fQ.value.trim().toLowerCase();
     var terms = Object.keys(activeTerms).filter(function (k) { return activeTerms[k]; });
     var out = [];
     DATA.meetings.forEach(function (m) {
-      if (fUp.checked && !isUpcoming(m)) return;
+      if (!ignoreUpcoming && fUp.checked && !isUpcoming(m)) return;
       if (fSec.value && m.section !== fSec.value) return;
       if (fCity.value && m.city !== fCity.value) return;
       var meetText = (m.city + " " + m.body).toLowerCase();
@@ -231,6 +305,11 @@ footer p{margin:4px 0}
     });
     var detail = m.documents.filter(function (d) { return d.detail_url && d.kind !== "items"; })[0];
     if (detail) docs.push(el("a", { href: detail.detail_url, rel: "noopener", text: "Meeting page" }));
+    if (m.add) {
+      docs.push(el("span", { class: "addcal" }, ["Add to calendar: ",
+        el("a", { href: m.add.google, target: "_blank", rel: "noopener", text: "Google" }), " · ",
+        el("a", { href: m.add.ics, download: "", text: ".ics" })]));
+    }
     var meta = el("div", { class: "meta" }, [
       el("span", { class: "when", text: fmtDay(m.date) + (m.date ? " · " + relDay(m.date) : "") }),
       el("span", { text: m.terms.join(", ") })
@@ -259,14 +338,23 @@ footer p{margin:4px 0}
     }
     return box;
   }
+  function countHits(items) { return items.reduce(function (n, it) { return n + it.hits.length; }, 0); }
   function update() {
     fillCities();
-    var items = filtered();
+    var cal = view === "calendar";
+    // The calendar has its own past/future navigation, so "upcoming only" doesn't apply there.
+    fUp.disabled = cal;
+    fUpLabel.classList.toggle("off", cal);
+    fUpLabel.title = cal ? "The calendar shows past and upcoming meetings: use the month arrows" : "";
+    var items = filtered(cal);
     var root = document.getElementById("results");
     root.textContent = "";
-    var nHits = items.reduce(function (n, it) { return n + it.hits.length; }, 0);
-    document.getElementById("summary").textContent =
-      items.length + " meeting" + (items.length === 1 ? "" : "s") + " · " + nHits + " mention" + (nHits === 1 ? "" : "s");
+    if (cal) renderCalendar(root, items); else renderList(root, items);
+    writeQuery();
+  }
+  function renderList(root, items) {
+    var nHits = countHits(items);
+    document.getElementById("summary").textContent = plural(items.length, "meeting") + " · " + plural(nHits, "mention");
     if (!items.length) {
       root.appendChild(el("div", { class: "empty", text: fUp.checked
         ? "No upcoming meetings match these filters. Untick “Upcoming meetings only” to include recent past meetings."
@@ -280,7 +368,162 @@ footer p{margin:4px 0}
       root.appendChild(el("h2", { text: s }));
       inSec.forEach(function (it) { root.appendChild(card(it)); });
     });
-    writeQuery();
+  }
+
+  // ---- calendar view --------------------------------------------------------
+  function monthName(d) { return d.toLocaleDateString(undefined, { month: "long", year: "numeric" }); }
+  function goMonth(d, focusIso) {
+    var next = clampMonth(firstOfMonth(d));
+    if (calDay && !sameMonth(parseDay(calDay), next)) calDay = "";
+    calMonth = next;
+    pendingFocus = focusIso || "";
+    update();
+  }
+  function selectDay(iso) {
+    var d = parseDay(iso);
+    if (d < minMonth || firstOfMonth(d) > maxMonth) return;
+    calDay = calDay === iso ? "" : iso;   // clicking the selected day again shows the whole month
+    calMonth = firstOfMonth(d);
+    pendingFocus = iso;
+    update();
+  }
+  function renderCalendar(root, items) {
+    var byDay = {}, undated = [];
+    items.forEach(function (it) {
+      if (it.m.date) (byDay[it.m.date] = byDay[it.m.date] || []).push(it);
+      else undated.push(it);
+    });
+    Object.keys(byDay).forEach(function (k) {
+      byDay[k].sort(function (a, b) { return (a.m.city + a.m.body).localeCompare(b.m.city + b.m.body); });
+    });
+    var monthKey = isoOf(calMonth).slice(0, 7);
+    var inMonth = items.filter(function (it) { return it.m.date && it.m.date.slice(0, 7) === monthKey; });
+    document.getElementById("summary").textContent = monthName(calMonth) + ": " + plural(inMonth.length, "meeting") +
+      " · " + plural(countHits(inMonth), "mention") + (undated.length ? " · " + undated.length + " without a date" : "");
+
+    // header: ‹ Month Year › Today
+    var prev = el("button", { type: "button", class: "navbtn", "aria-label": "Previous month", text: "‹" });
+    var next = el("button", { type: "button", class: "navbtn", "aria-label": "Next month", text: "›" });
+    var todayBtn = el("button", { type: "button", class: "navbtn", text: "Today" });
+    prev.disabled = calMonth <= minMonth;
+    next.disabled = calMonth >= maxMonth;
+    prev.addEventListener("click", function () { pendingNav = "prev"; goMonth(addMonths(calMonth, -1)); });
+    next.addEventListener("click", function () { pendingNav = "next"; goMonth(addMonths(calMonth, 1)); });
+    todayBtn.addEventListener("click", function () { calDay = ""; goMonth(localToday(), isoOf(localToday())); });
+    root.appendChild(el("div", { class: "cal-head" }, [
+      el("h2", { id: "cal-title", text: monthName(calMonth) }), prev, next, todayBtn]));
+
+    // grid: weekday header, then one row per week (Sunday first)
+    var grid = el("div", { class: "cal-grid", role: "grid", "aria-labelledby": "cal-title" });
+    var dow = el("div", { class: "cal-row", role: "row" });
+    for (var i = 0; i < 7; i++) {
+      var wd = new Date(2023, 0, 1 + i);   // Jan 1, 2023 was a Sunday
+      dow.appendChild(el("div", { class: "cal-dow", role: "columnheader",
+        "aria-label": wd.toLocaleDateString(undefined, { weekday: "long" }),
+        text: wd.toLocaleDateString(undefined, { weekday: "short" }) }));
+    }
+    grid.appendChild(dow);
+    var todayIso = isoOf(localToday());
+    var focusIso = pendingFocus ||
+      (calDay && sameMonth(parseDay(calDay), calMonth) ? calDay :
+       sameMonth(localToday(), calMonth) ? todayIso : isoOf(calMonth));
+    var start = addDays(calMonth, -calMonth.getDay());
+    var weeks = Math.ceil((calMonth.getDay() + new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 0).getDate()) / 7);
+    for (var w = 0; w < weeks; w++) {
+      var row = el("div", { class: "cal-row", role: "row" });
+      for (var dIdx = 0; dIdx < 7; dIdx++) {
+        var day = addDays(start, w * 7 + dIdx), iso = isoOf(day);
+        var dayItems = byDay[iso] || [];
+        var anyNew = dayItems.some(function (it) { return it.hits.some(isNew); });
+        var cls = "cal-cell" + (sameMonth(day, calMonth) ? "" : " out") + (iso === todayIso ? " today" : "");
+        var label = fmtDay(iso) + ": " + (dayItems.length ? plural(dayItems.length, "meeting") + " with mentions" : "no meetings with mentions") +
+          (anyNew ? ", new" : "");
+        var cell = el("div", { class: cls, role: "gridcell", "data-iso": iso, tabindex: iso === focusIso ? "0" : "-1",
+          "aria-selected": iso === calDay ? "true" : "false", "aria-label": label },
+          [el("span", { class: "daynum", "aria-hidden": "true", text: String(day.getDate()) })]);
+        dayItems.slice(0, 3).forEach(function (it) {
+          var isn = it.hits.some(isNew);
+          cell.appendChild(el("span", { class: "pill" + (isn ? " isnew" : ""), "aria-hidden": "true",
+            title: it.m.city + " · " + it.m.body, text: it.m.city + " · " + it.m.body }));
+        });
+        if (dayItems.length > 3) cell.appendChild(el("span", { class: "cal-more", "aria-hidden": "true", text: "+" + (dayItems.length - 3) + " more" }));
+        if (dayItems.length) cell.appendChild(el("span", { class: "cal-dot" + (anyNew ? " isnew" : ""), "aria-hidden": "true", text: String(dayItems.length) }));
+        row.appendChild(cell);
+      }
+      grid.appendChild(row);
+    }
+    grid.addEventListener("click", function (e) {
+      var c = e.target.closest("[data-iso]");
+      if (c) selectDay(c.getAttribute("data-iso"));
+    });
+    grid.addEventListener("keydown", function (e) {
+      var c = e.target.closest("[data-iso]");
+      if (!c) return;
+      var d = parseDay(c.getAttribute("data-iso")), to = null;
+      switch (e.key) {
+        case "ArrowLeft": to = addDays(d, -1); break;
+        case "ArrowRight": to = addDays(d, 1); break;
+        case "ArrowUp": to = addDays(d, -7); break;
+        case "ArrowDown": to = addDays(d, 7); break;
+        case "Home": to = addDays(d, -d.getDay()); break;
+        case "End": to = addDays(d, 6 - d.getDay()); break;
+        case "PageUp": case "PageDown":
+          var m2 = addMonths(d, e.key === "PageUp" ? -1 : 1);
+          var last = new Date(m2.getFullYear(), m2.getMonth() + 1, 0).getDate();
+          to = new Date(m2.getFullYear(), m2.getMonth(), Math.min(d.getDate(), last));
+          break;
+        case "Enter": case " ":
+          e.preventDefault(); selectDay(c.getAttribute("data-iso")); return;
+        default: return;
+      }
+      e.preventDefault();
+      if (firstOfMonth(to) < minMonth || firstOfMonth(to) > maxMonth) return;
+      var iso2 = isoOf(to), target = grid.querySelector('[data-iso="' + iso2 + '"]');
+      if (target && !target.classList.contains("out")) {
+        c.setAttribute("tabindex", "-1");
+        target.setAttribute("tabindex", "0");
+        target.focus();
+      } else {
+        goMonth(to, iso2);
+      }
+    });
+    root.appendChild(grid);
+
+    // the selected day's meetings, or the whole month's, as cards
+    var panel = el("div", { id: "day-panel" });
+    if (calDay && sameMonth(parseDay(calDay), calMonth)) {
+      var all = el("button", { type: "button", class: "linkbtn", text: "Show all of " + monthName(calMonth) });
+      all.addEventListener("click", function () { calDay = ""; pendingFocus = ""; update(); });
+      panel.appendChild(el("h2", null, [fmtDay(calDay), el("span", { class: "note", text: relDay(calDay) })]));
+      var sel = byDay[calDay] || [];
+      if (!sel.length) panel.appendChild(el("div", { class: "empty", text: "No meetings with mentions on this day." }));
+      sel.forEach(function (it) { panel.appendChild(card(it)); });
+      panel.appendChild(el("p", null, [all]));
+    } else {
+      var days = Object.keys(byDay).filter(function (k) { return k.slice(0, 7) === monthKey; }).sort();
+      if (!days.length) {
+        panel.appendChild(el("div", { class: "empty", text: "No meetings with mentions in " + monthName(calMonth) +
+          (items.length ? ". Try another month." : " match these filters.") }));
+      }
+      days.forEach(function (k) {
+        panel.appendChild(el("h2", null, [fmtDay(k), el("span", { class: "note", text: relDay(k) })]));
+        byDay[k].forEach(function (it) { panel.appendChild(card(it)); });
+      });
+      if (undated.length) {
+        panel.appendChild(el("h2", { text: "Date not known" }));
+        undated.forEach(function (it) { panel.appendChild(card(it)); });
+      }
+    }
+    root.appendChild(panel);
+
+    if (pendingFocus) {
+      var f = grid.querySelector('[data-iso="' + pendingFocus + '"]');
+      if (f) f.focus();
+    } else if (pendingNav) {   // keep focus on the arrow that was used (the other one if it's now disabled)
+      var navTo = pendingNav === "prev" ? prev : next;
+      (navTo.disabled ? (navTo === prev ? next : prev) : navTo).focus();
+    }
+    pendingFocus = pendingNav = "";
   }
   [fUp, fNew, fSec, fCity].forEach(function (c) { c.addEventListener("change", update); });
   document.getElementById("sources-link").addEventListener("click", function () { document.getElementById("sources-wrap").open = true; });
@@ -333,6 +576,10 @@ footer p{margin:4px 0}
   if (target) {
     var m = DATA.meetings.filter(function (x) { return x.id === target[1]; })[0];
     if (m && !isUpcoming(m)) fUp.checked = false;   // a shared link to a past meeting still shows it
+    if (m && m.date && view === "calendar") {       // ...and in the calendar, opens on its day
+      calDay = m.date;
+      calMonth = clampMonth(firstOfMonth(parseDay(m.date)));
+    }
   }
   update();
   if (target) {
