@@ -75,11 +75,25 @@ def _process(doc: Document, store: Store, http: Http, terms, settings: dict, run
         st.skipped += 1
         return
 
+    # A file we couldn't read last time (an unsupported format or a scanned PDF without OCR) is
+    # downloaded and read again even if unchanged: a newer version of the tool may do better.
+    unreadable_before = any(k in (existing["note"] or "") for k in _UNREADABLE) if existing else False
+    read_before = bool(existing and existing["status"] == "ok" and existing["sha256"] and not unreadable_before)
+
+    validators = None
     try:
         if doc.inline_text is not None:
             data, ctype = doc.inline_text.encode("utf-8"), "text/plain"
         else:
-            data, ctype, _ = http.download(doc.url)
+            # Ask the server to skip the body if the file hasn't changed since we read it.
+            dl = http.fetch(doc.url,
+                            etag=existing["etag"] if read_before else None,
+                            last_modified=existing["last_modified"] if read_before else None)
+            if dl.not_modified:
+                st.unchanged += 1
+                store.save_document(doc, None, None, "ok", existing["note"] or "")
+                return
+            data, ctype, validators = dl.body, dl.content_type, (dl.etag, dl.last_modified)
     except FetchError as exc:
         st.failed += 1
         store.save_document(doc, None, None, "error", str(exc))
@@ -87,16 +101,22 @@ def _process(doc: Document, store: Store, http: Http, terms, settings: dict, run
         return
 
     sha = hashlib.sha256(data).hexdigest()
-    # Same file as last time: skip it — unless last time we couldn't read it (an unsupported format or
-    # a scanned PDF without OCR), in which case a newer version of the tool may do better.
-    unreadable_before = any(k in (existing["note"] or "") for k in _UNREADABLE) if existing else False
-    if existing and existing["status"] == "ok" and existing["sha256"] == sha and not unreadable_before:
+    if read_before and existing["sha256"] == sha:
         st.unchanged += 1
-        store.save_document(doc, sha, None, "ok", existing["note"] or "")
+        store.save_document(doc, sha, None, "ok", existing["note"] or "", validators=validators)
         return
 
-    pages, note = extract_pages(data, ctype, ocr=str(settings.get("ocr", "auto")))
-    store.save_document(doc, sha, pages, "ok", note)
+    try:
+        pages, note = extract_pages(data, ctype, ocr=str(settings.get("ocr", "auto")))
+    except Exception as exc:  # noqa: BLE001 - a corrupt or mislabeled file shouldn't stop the run
+        # Saved as an error, so the next run downloads and tries it again.
+        st.failed += 1
+        msg = f"couldn't read the file: {type(exc).__name__}: {exc}"
+        store.save_document(doc, None, None, "error", msg)
+        st.notes.append(f"{doc.title} ({doc.meeting_date}): {msg}")
+        log.warning("  ! %s: %s", doc.title, msg)
+        return
+    store.save_document(doc, sha, pages, "ok", note, validators=validators)
     st.read += 1
     if note and "scanned" in note:
         st.notes.append(f"{doc.title} ({doc.meeting_date}): {note}")
@@ -175,7 +195,12 @@ def run(config: dict, backfill_days: int | None = None, http: Http | None = None
             st.listed = len(docs)
             log.info("  %d agenda(s) in window", len(docs))
             for doc in docs:
-                _process(doc, store, http, terms, settings, run_id, st, today)
+                try:
+                    _process(doc, store, http, terms, settings, run_id, st, today)
+                except Exception as exc:  # noqa: BLE001 - one bad agenda shouldn't stop the others
+                    st.failed += 1
+                    st.notes.append(f"{doc.title} ({doc.meeting_date}): {type(exc).__name__}: {exc}")
+                    log.exception("  ! %s: unexpected error", doc.title)
         store.finish_run(run_id)
         for st in statuses:
             store.record_source_run(run_id, st)

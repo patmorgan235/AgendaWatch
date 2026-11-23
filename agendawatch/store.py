@@ -12,7 +12,8 @@ CREATE TABLE IF NOT EXISTS documents (
     url TEXT PRIMARY KEY,
     source TEXT, city TEXT, body TEXT, meeting_date TEXT, title TEXT, kind TEXT,
     detail_url TEXT, sha256 TEXT, pages INTEGER, chars INTEGER,
-    status TEXT, note TEXT, first_seen TEXT, last_checked TEXT
+    status TEXT, note TEXT, first_seen TEXT, last_checked TEXT,
+    etag TEXT, last_modified TEXT
 );
 CREATE TABLE IF NOT EXISTS pages (
     url TEXT, page INTEGER, text TEXT, PRIMARY KEY (url, page)
@@ -37,6 +38,12 @@ CREATE INDEX IF NOT EXISTS idx_matches_run ON matches(run_id);
 CREATE INDEX IF NOT EXISTS idx_docs_date ON documents(meeting_date);
 """
 
+# Columns added after the first release. CREATE TABLE IF NOT EXISTS leaves an existing database's
+# tables alone, so these are added to older databases when they're opened.
+ADDED_COLUMNS = {
+    "documents": [("etag", "TEXT"), ("last_modified", "TEXT")],
+}
+
 
 def _now() -> str:
     return datetime.now().isoformat(timespec="seconds")
@@ -51,6 +58,15 @@ class Store:
         self.db = sqlite3.connect(path)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
+        self._migrate()
+
+    def _migrate(self) -> None:
+        for table, columns in ADDED_COLUMNS.items():
+            have = {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})")}
+            for name, sqltype in columns:
+                if name not in have:
+                    self.db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {sqltype}")
+        self.db.commit()
 
     def close(self) -> None:
         self.db.commit()
@@ -76,7 +92,10 @@ class Store:
     def get_document(self, url: str) -> sqlite3.Row | None:
         return self.db.execute("SELECT * FROM documents WHERE url=?", (url,)).fetchone()
 
-    def save_document(self, doc, sha: str | None, pages: list[str] | None, status: str, note: str = "") -> None:
+    def save_document(self, doc, sha: str | None, pages: list[str] | None, status: str, note: str = "",
+                      validators: tuple[str | None, str | None] | None = None) -> None:
+        """Insert or update a document. `validators` is the (ETag, Last-Modified) pair from a full
+        download; None keeps the stored pair (a failed or not-modified fetch says nothing new)."""
         now = self.now()
         existing = self.get_document(doc.url)
         mdate = doc.meeting_date.isoformat() if doc.meeting_date else None
@@ -96,6 +115,8 @@ class Store:
             (doc.url, doc.source, doc.city, doc.body, mdate, doc.title, doc.kind, doc.detail_url,
              sha, n_pages, chars, status, note, now, now),
         )
+        if validators is not None:
+            self.db.execute("UPDATE documents SET etag=?, last_modified=? WHERE url=?", (*validators, doc.url))
         if pages is not None:
             self.db.execute("DELETE FROM pages WHERE url=?", (doc.url,))
             self.db.executemany(

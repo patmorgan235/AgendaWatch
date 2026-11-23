@@ -109,7 +109,10 @@ def looks_scanned(pages: list[str]) -> bool:
 def extract_pages(data: bytes, content_type: str = "", ocr: str = "auto") -> tuple[list[str], str]:
     """Return (pages, note). Note explains anything unusual, e.g. a scanned PDF."""
     head = data[:1024].lstrip().lower()
-    if data.lstrip()[:5] == b"%PDF-" or "pdf" in content_type:
+    looks_html = head.startswith((b"<!doctype", b"<html")) or b"<body" in head
+    # Trust the bytes over the Content-Type: some sites answer a PDF link with an HTML error or
+    # "please wait" page still labelled application/pdf.
+    if data.lstrip()[:5] == b"%PDF-" or ("pdf" in content_type and not looks_html):
         pages = _pdf_pages(data)
         if looks_scanned(pages):
             if ocr != "off":
@@ -123,7 +126,7 @@ def extract_pages(data: bytes, content_type: str = "", ocr: str = "auto") -> tup
         if pages is not None:
             return pages, "Word document"
         return [], "unreadable Word document"
-    if "html" in content_type or head.startswith((b"<!doctype", b"<html")) or b"<body" in head:
+    if "html" in content_type or looks_html:
         soup = BeautifulSoup(data, "html.parser")
         for tag in soup(["script", "style", "noscript"]):
             tag.decompose()
