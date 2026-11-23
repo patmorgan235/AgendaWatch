@@ -21,7 +21,7 @@ def test_dart_is_case_sensitive_whole_word():
 
 def test_dcta_terms():
     counts = names("Interlocal agreement with the Denton County\nTransportation Authority (DCTA) for GoZone service")
-    assert counts["DCTA"] == 1 and counts["Denton County Transportation Authority"] == 1
+    assert counts == {"DCTA": 2}   # the full name is an alias of DCTA
     assert "DCTA" not in names("dcta.net")  # acronym is case-sensitive
 
 
@@ -36,12 +36,14 @@ def test_paratransit_variants():
 
 def test_full_name_across_line_break():
     c = names("agreement with the Dallas Area\nRapid   Transit authority")
-    assert c["Dallas Area Rapid Transit"] == 1
-    assert c["Transit"] == 1
+    assert c["DART"] == 1          # the full name is an alias of DART
+    assert "Transit" not in c   # inside the longer name, so it counts only as that term
 
 
 def test_transit_whole_word():
-    assert names("transit-oriented development near the station") == {"Transit": 1}
+    assert names("regional transit plan update") == {"Transit": 1}
+    # the specific term wins over the broad one
+    assert names("transit-oriented development near the station") == {"Transit-oriented development": 1}
     assert "Transit" not in names("transitional housing program")
 
 
@@ -52,7 +54,14 @@ def test_gmp_skips_guaranteed_maximum_price():
 
 
 def test_general_mobility_program():
-    assert names("Use of General Mobility Program funds")["General Mobility Program"] == 1
+    assert names("Use of General Mobility Program funds") == {"GMP": 1}
+    assert names("use of general mobility program funds") == {"GMP": 1}   # alias ignores case; GMP itself doesn't
+
+
+def test_alias_keeps_its_own_case_rule():
+    from agendawatch.matcher import compile_terms as ct
+    [t] = ct([{"name": "DART", "case_sensitive": True, "aliases": ["Dallas Area Rapid Transit"]}])
+    assert t.regex.search("DALLAS AREA RAPID TRANSIT") and not t.regex.search("Dart Container")
 
 
 def test_streetcar_variants():

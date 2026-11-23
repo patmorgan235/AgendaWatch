@@ -18,6 +18,7 @@ from pathlib import Path
 import yaml
 
 from .report import text_summary, write_report
+from .site import taxonomy_from_config
 from .runner import run
 from .storage import LockHeld, Storage
 from .store import Store
@@ -85,7 +86,7 @@ def run_job(cfg: dict, storage: Storage, today: date | None = None, http=None,
                     store.close()
                 log.info("pruned page text of %d agenda(s) older than %s", pruned, cutoff)
 
-            write_report(res, terms, site, settings.get("site_url"))
+            write_report(res, terms, site, settings.get("site_url"), taxonomy_from_config(cfg))
             # Save the database before publishing: if publishing fails, the next run republishes;
             # if saving failed after publishing, the next run would report the same items as new again.
             storage.put_state(DB_KEY, db)

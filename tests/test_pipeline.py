@@ -65,7 +65,10 @@ def test_full_run_dedupes_and_reports(tmp_path):
 
     res = run(cfg, http=FakeHttp(routes(pdf)), today=TODAY)
     terms = {r["term"] for r in res.new_matches}
-    assert terms == {"DART", "Dallas Area Rapid Transit", "Transit", "General Mobility Program", "GMP", "Streetcar"}
+    # The full names are aliases ("Dallas Area Rapid Transit" counts as DART, "General Mobility
+    # Program" as GMP), and the "Transit" inside the full name isn't counted separately.
+    # (Plano's "DART withdrawal election" is caught by the DART membership term too)
+    assert terms == {"DART", "GMP", "Streetcar", "DART membership"}
     assert all(r["page"] == 2 for r in res.new_matches if r["url"] == "https://d/agenda1.pdf")
     # GMP in the Park Board construction item is filtered out as "Guaranteed Maximum Price"
     assert not [r for r in res.new_matches if r["url"] == "https://d/agenda2.pdf"]
@@ -78,7 +81,9 @@ def test_full_run_dedupes_and_reports(tmp_path):
     dallas = next(m for m in data["meetings"] if m["city"] == "Dallas")
     assert dallas["body"] == "Transportation and Infrastructure Committee" and dallas["section"] == "DART member cities"
     assert dallas["upcoming"] and all(x["new"] for x in dallas["matches"])
-    assert any(x["link"] == "https://d/agenda1.pdf#page=2" and x["hit"] == "DART" for x in dallas["matches"])
+    # "Dallas Area Rapid Transit (DART)" on one line is one DART passage, not two
+    dart = [x for x in dallas["matches"] if x["term"] == "DART"]
+    assert len(dart) == 1 and dart[0]["link"] == "https://d/agenda1.pdf#page=2"
     assert next(m for m in data["meetings"] if m["city"] == "Plano")["section"] == "DCTA member cities"
     assert data["sections"][:2] == ["DART member cities", "DCTA member cities"]
     assert "503" in next(s for s in data["sources"] if s["name"] == "Addison")["error"]
@@ -105,7 +110,7 @@ def test_full_run_dedupes_and_reports(tmp_path):
     amended = make_pdf([AGENDA_P1, AGENDA_P2 + "\nItem 15. DART Silver Line update"])
     res3 = run(cfg, http=FakeHttp(routes(amended)), today=TODAY)
     new = [(r["term"], r["hit"]) for r in res3.new_matches]
-    assert new and all(t == "DART" for t, _ in new)
+    assert new and {t for t, _ in new} == {"DART", "Silver Line"}   # only the new Item 15
 
 
 def test_past_meetings_are_not_redownloaded(tmp_path):

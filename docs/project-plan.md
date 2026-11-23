@@ -1,6 +1,6 @@
 # AgendaWatch — Project Plan
 
-_Last updated: November 22, 2026 (Phases 0–4 complete; next: Phase 5, tags & terms)_
+_Last updated: November 22, 2026 (Phases 0–4 complete; Phase 5, tags & terms, in review)_
 
 ## Goal
 
@@ -20,7 +20,7 @@ A searchable history of past agenda items is useful but secondary.
 
 - **Live:** https://agendas.urbancivic.cloud (also https://agendawatchbcfoiznunxe4.z21.web.core.windows.net/)
   - Updated daily at 11:00 UTC (5 AM CST / 6 AM CDT) by an Azure Container Apps job.
-  - The site has filters (upcoming only, new since your last visit, section, city, term, search), an Atom feed (`feed.xml`), a calendar feed (`upcoming.ics`) and the raw data (`data.json`).
+  - The site has filters (upcoming only, new since your last visit, action items only, section, city, term, tag by agency/mode/topic, search), an Atom feed (`feed.xml`), a calendar feed (`upcoming.ics`) and the raw data (`data.json`).
 - **Coverage:** 43 sources (42 bodies; Richardson has two sources). Report sections: DART member cities, DCTA member cities, Trinity Metro member & associate cities, Regional (RTC), Counties, and Eligible to join a transit agency.
 - **Platforms supported:**
   - Legistar, CivicClerk, CivicWeb;
@@ -212,20 +212,18 @@ so it came first.
 - Hurst will show as failing every run from Azure, as expected (Phase 0).
 - **Possible follow-up:** a Log Analytics alert on `stale_source` events, so a quiet source emails you instead of waiting for someone to open the Sources table.
 
-### Phase 5 — Tags and terms (next)
+### Phase 5 — Tags and terms (in review)
 
-Today there are 11 flat terms, and "Transit" alone is 42% of mentions (77 of 183 after the Nov 22 reset).
+Before: 10 flat terms, and "Transit" alone was 42% of mentions (77 of 183 after the Nov 22 reset).
+Re-matching the hosted database with the new list: 232 mentions across 25 terms; "Transit" is down to 50 (22%).
 
-- [ ] **Tags:** each term in `config.yaml` gets one or more tags, in three groups:
-  - **Agency:** DART, DCTA, Trinity Metro, RTC/NCTCOG.
-  - **Mode:** rail, bus, streetcar, paratransit, on-demand.
-  - **Topic:** funding (GMP, General Mobility Program), DART membership and withdrawal, transit-oriented development.
-
-  Matches carry their tags into `data.json`, the page, the feed and the calendar.
-- [ ] **New terms**, each with tags. Candidates: Silver Line, TEXRail, TRE, light rail, bus rapid transit, GoLink / microtransit / on-demand transit, park-and-ride, transit-oriented development, withdrawal election. **Open:** the owner picks the final list.
-- [ ] **Action tags** from the text around each match: interlocal agreement, contract or award, resolution or ordinance, public hearing, presentation or briefing. This separates "the council votes on a DART agreement" from "DART appears in a list of agencies".
-- [ ] **Noise rules:** after about a week of daily runs, add `exclude_if_nearby` rules for recurring boilerplate, such as Garland's list of agencies, which includes "(3) Dallas Area Rapid Transit Authority".
-- [ ] Re-tag existing matches when tags change, rather than re-downloading agendas.
+- [x] **Tags** per term in `config.yaml`, in three groups: agency, mode, topic. Matches carry them into `data.json` and the page. Tags are applied at report time, so changing them re-tags everything on the next run.
+- [x] **New terms** (owner's picks): Silver Line / Cotton Belt, TEXRail, TRE, light rail, D2 subway, M-Line trolley (MATA), high-speed rail, bus rapid transit, bus stops and shelters, park-and-ride, GoLink, microtransit, on-demand transit, STAR Transit, SPAN, Collin County Transit, transit-oriented development, DART membership and withdrawal, Complete Streets, bicycle and pedestrian. Full names are aliases of their acronyms (DART, DCTA, GMP), so each is one term. That makes 27 terms.
+- [x] **Action tags** from the text around each match (agreement, contract, resolution or ordinance, public hearing, briefing, appointment, budget or funding, election), with an "Action items only" filter.
+- [x] **Noise rules:** the longest match wins across terms (no "Transit" inside "Dallas Area Rapid Transit" or "STAR Transit"); `exclude_context` drops Ford Transit vans, "in transit", and "TRE" as initials.
+- [x] **Re-match stored agendas** when the term list changes, without re-downloading. New matches on past meetings are back-dated.
+- [ ] Tags in the Atom feed and calendar entries (categories), and per-tag feeds.
+- [ ] Noise rules for recurring boilerplate after a week of daily runs, such as Garland's list of agencies, which includes "(3) Dallas Area Rapid Transit Authority".
 
 **Done when:** every match shows its tags; the page filters by tag and action type; and the share of "Transit"-only passing mentions has dropped measurably on real data.
 

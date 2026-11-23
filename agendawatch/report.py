@@ -15,15 +15,16 @@ def source_sections(res: RunResult) -> dict[str, str]:
     return {s.name: s.section or OTHER for s in res.statuses}
 
 
-def build_html(res: RunResult, terms: list[str], site_url: str | None = None) -> str:
+def build_html(res: RunResult, terms: list[str], site_url: str | None = None, taxonomy: dict | None = None) -> str:
     """The report page, with its data embedded (works opened from disk)."""
-    return render_page(build_data(res, terms, site_url))
+    return render_page(build_data(res, terms, site_url, taxonomy))
 
 
-def write_report(res: RunResult, terms: list[str], report_dir: str | Path, site_url: str | None = None) -> Path:
+def write_report(res: RunResult, terms: list[str], report_dir: str | Path, site_url: str | None = None,
+                 taxonomy: dict | None = None) -> Path:
     """Write the site into report_dir: index.html (= latest.html), data.json, feed.xml,
     upcoming.ics and a dated snapshot. Returns the path of index.html."""
-    return write_site(res, terms, report_dir, site_url)
+    return write_site(res, terms, report_dir, site_url, taxonomy)
 
 
 def text_summary(res: RunResult) -> str:

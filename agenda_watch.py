@@ -46,7 +46,10 @@ def load_config(path: str) -> dict:
 def cmd_run(args, cfg) -> int:
     res = run(cfg, backfill_days=args.backfill)
     terms = [t if isinstance(t, str) else t["name"] for t in cfg["terms"]]
-    path = write_report(res, terms, cfg["settings"]["report_dir"], cfg["settings"].get("site_url"))
+    from agendawatch.site import taxonomy_from_config
+
+    path = write_report(res, terms, cfg["settings"]["report_dir"], cfg["settings"].get("site_url"),
+                        taxonomy_from_config(cfg))
     print()
     print(text_summary(res))
     print(f"\nReport: {path}")

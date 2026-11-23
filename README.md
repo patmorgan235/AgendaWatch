@@ -82,7 +82,7 @@ Cities that could join DART (they border a DART member city), Trinity Metro (the
 
 Not read yet: Grand Prairie, The Colony, Burleson and Prosper post through Municode Meetings, which refuses the tool (Cloudflare challenge / dropped connections); Allen and Saginaw use an AgendaLink portal whose API needs a token embedded in the app; Arlington's agenda list is loaded by script; Rockwall's and Corinth's sites didn't respond.
 
-Terms: DART, Dallas Area Rapid Transit, Transit, GMP, General Mobility Program, DCTA, Denton County Transportation Authority, Trinity Metro, Paratransit, Streetcar.
+Terms (27), each tagged by **agency**, **mode** and **topic**: the agencies and providers (DART, DCTA, Trinity Metro, STAR Transit, SPAN, Collin County Transit, the M-Line trolley); rail (Silver Line/Cotton Belt, TEXRail, TRE, light rail, the D2 subway, high-speed rail, streetcar); bus (bus rapid transit, bus stops and shelters, park-and-ride); on-demand and paratransit (GoLink, microtransit, on-demand transit, paratransit); and policy (GMP, General Mobility Program, DART membership and withdrawal, transit-oriented development, Complete Streets, bicycle and pedestrian), plus the broad "Transit".
 
 ## Setup (once)
 
@@ -138,7 +138,7 @@ The page shows **every** mention for meetings in the report window (30 days back
 
 **Subscribe** (bottom of the page) lists a calendar and an RSS feed for every city and section, with an "Add to Google Calendar" link (needs `site_url`). Google Calendar refreshes subscribed calendars every several hours.
 
-Each meeting shows how many days away it is, which terms it mentions, the matching passages with a link to the right page of the PDF, and links to the agenda, packet and meeting page, plus "Add to calendar" (Google or `.ics`).
+Each meeting shows how many days away it is, which terms and tags it mentions, the matching passages with a link to the right page of the PDF, and links to the agenda, packet and meeting page, plus "Add to calendar" (Google or `.ics`).
 
 **Sources** at the bottom (or `index.html#sources`) is the health check:
 
@@ -212,7 +212,12 @@ Everything is in `config.yaml`.
 
 - **Add a term:** add `- name: Silver Line` under `terms`. Plain phrases match whole words, ignore case, and tolerate line breaks.
 - **Acronyms:** use `case_sensitive: true` (as DART and GMP do) so "Dart Container" doesn't match.
-- **False positives:** `exclude_if_nearby` skips a match when a phrase appears close by. GMP already skips "Guaranteed Maximum Price", which is common in construction contracts.
+- **False positives:** `exclude_if_nearby` skips a match when a phrase appears close by. GMP already skips "Guaranteed Maximum Price", which is common in construction contracts. `exclude_context` is narrower: it skips a match only when a pattern covers the match itself, as "Transit" skips "Ford Transit" vans and "in transit".
+- **Other spellings:** `aliases` reports other spellings under one term, each with its own case rule. DART has the alias "Dallas Area Rapid Transit" (any case) while "DART" itself stays case-sensitive; DCTA and GMP have their full names as aliases.
+- **Overlaps:** where terms overlap, the longest match wins, so "Transit" inside "Dallas Area Rapid Transit" counts only as the longer term.
+- **Tags:** give a term `tags: [agency:DART, mode:rail]` (`group:value`). The page shows one row of tag buttons per group: buttons in a row widen the results (rail *or* bus), and rows narrow them (rail *and* DART). Tags are applied when the report is built, so changing them takes effect on the next run without re-reading anything.
+- **Action tags:** the `actions` section labels mentions whose surrounding text looks like a real item (agreement, contract, resolution or ordinance, public hearing, briefing, appointment, budget or funding, election). "Action items only" on the page hides passing mentions.
+- **After changing terms:** the next run re-matches every agenda whose text is still stored. Matches that no longer apply are removed; new matches on upcoming meetings show as new, while those on past meetings are back-dated so feeds aren't flooded. Keep term names stable: renaming a term makes its passages look new once.
 - **Fewer Dallas meetings:** Dallas posts agendas for dozens of boards. Uncomment the `bodies:` line to keep only the ones you care about.
 - **Deeper Legistar search:** `attachments: names` also searches agenda item titles and attachment names; `download` also downloads and searches attachments (slower).
 - **A page with one row per meeting:** use `type: doc_table` and list which columns to read in `columns` (see Richardson).
