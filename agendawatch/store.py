@@ -33,6 +33,10 @@ CREATE TABLE IF NOT EXISTS source_runs (
     new_matches INTEGER, error TEXT,
     PRIMARY KEY (run_id, source)
 );
+CREATE TABLE IF NOT EXISTS feeds (
+    kind TEXT, name TEXT, path TEXT UNIQUE, first_published TEXT, last_published TEXT,
+    PRIMARY KEY (kind, name)
+);
 CREATE INDEX IF NOT EXISTS idx_matches_run ON matches(run_id);
 CREATE INDEX IF NOT EXISTS idx_docs_date ON documents(meeting_date);
 """
@@ -55,6 +59,19 @@ class Store:
     def close(self) -> None:
         self.db.commit()
         self.db.close()
+
+    # published feed paths (see feeds.py): a city or section keeps its address forever
+    def feed_history(self) -> list[dict]:
+        return [dict(r) for r in self.db.execute(
+            "SELECT kind, name, path, first_published, last_published FROM feeds ORDER BY kind, name")]
+
+    def record_feeds(self, feeds: list[dict]) -> None:
+        now = self.now()
+        self.db.executemany(
+            """INSERT INTO feeds (kind, name, path, first_published, last_published) VALUES (?,?,?,?,?)
+               ON CONFLICT(kind, name) DO UPDATE SET last_published=excluded.last_published""",
+            [(f["kind"], f["name"], f["path"], now, now) for f in feeds])
+        self.db.commit()
 
     # runs
     def start_run(self) -> int:

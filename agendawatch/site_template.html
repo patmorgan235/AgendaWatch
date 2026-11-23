@@ -128,7 +128,7 @@ footer p{margin:4px 0}
 </details>
 
 <footer>
-  <p>Subscribe: <a href="feed.xml">new mentions (Atom/RSS)</a> · <a href="upcoming.ics">upcoming meetings (calendar)</a> · <a href="#subscribe-wrap" id="subscribe-link">calendars by city</a> ·<a href="data.json">data (JSON)</a> · <a href="#sources" id="sources-link">source health</a></p>
+  <p>Subscribe: <a href="feed.xml">new mentions (Atom/RSS)</a> · <a href="upcoming.ics">upcoming meetings (calendar)</a> · <span id="subscribe-link-wrap"><a href="#subscribe-wrap" id="subscribe-link">calendars by city</a> · </span><a href="data.json">data (JSON)</a> · <a href="#sources" id="sources-link">source health</a></p>
   <p>Agenda Watch searches publicly posted agendas automatically. Snippets can miss context and agendas change — always confirm against the official posted agenda linked on each meeting.</p>
   <p id="foot-run"></p>
 </footer>
@@ -365,9 +365,16 @@ footer p{margin:4px 0}
 
   // ---- subscribe: per-section and per-city calendars ------------------------
   var feedWrap = document.getElementById("subscribe-wrap");
-  if (!(DATA.feeds && DATA.feeds.length)) feedWrap.hidden = true;
+  if (!(DATA.feeds && DATA.feeds.length)) {
+    feedWrap.hidden = true;
+    document.getElementById("subscribe-link-wrap").hidden = true;
+  }
+  var feedsRenderedFor = null;   // the city|section filter the table was last built for
   function renderFeeds() {
-    if (feedWrap.hidden) return;
+    // Only the city and section filters change this table, and only an open panel shows it.
+    var key = fCity.value + "|" + fSec.value;
+    if (feedWrap.hidden || !feedWrap.open || key === feedsRenderedFor) return;
+    feedsRenderedFor = key;
     function picked(f) { return f.kind === "city" ? f.name === fCity.value : f.name === fSec.value; }
     // the feed for the current city/section filter first, then sections, then cities A–Z
     var feeds = DATA.feeds.slice().sort(function (a, b) {
@@ -386,6 +393,7 @@ footer p{margin:4px 0}
     });
   }
   document.getElementById("subscribe-link").addEventListener("click", function () { feedWrap.open = true; });
+  feedWrap.addEventListener("toggle", renderFeeds);   // build the table when the panel is opened
   function renderList(root, items) {
     var nHits = countHits(items);
     document.getElementById("summary").textContent = plural(items.length, "meeting") + " · " + plural(nHits, "mention");
@@ -606,6 +614,7 @@ footer p{margin:4px 0}
   // ---- start ---------------------------------------------------------------
   readQuery();
   if (location.hash === "#sources") document.getElementById("sources-wrap").open = true;
+  if (location.hash === "#subscribe-wrap" && !feedWrap.hidden) feedWrap.open = true;   // a shared link opens the panel
   var target = location.hash.match(/^#m-([0-9a-f]+)$/);
   if (target) {
     var m = DATA.meetings.filter(function (x) { return x.id === target[1]; })[0];

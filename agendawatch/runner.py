@@ -7,6 +7,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 
+from . import feeds as feed_paths
 from .extract import extract_pages
 from .http import FetchError, Http
 from .matcher import compile_terms, find_hits
@@ -53,6 +54,8 @@ class RunResult:
     report_start: date | None = None     # the report shows meetings from here (≤ start; see report_lookback_days)
     run_started: str | None = None
     today: date | None = None
+    feeds: list = field(default_factory=list)            # per-city/section feeds to publish: {kind, name, path}
+    retired_feeds: list = field(default_factory=list)    # published before, no longer watched (feeds.py)
 
 
 def make_http(settings: dict) -> Http:
@@ -199,15 +202,21 @@ def run(config: dict, backfill_days: int | None = None, http: Http | None = None
                 log.warning("source %s has failed %d runs in a row (since %s)", st.name, st.failing_runs,
                             st.failing_since, extra={"fields": {"event": "failing_source", "source": st.name,
                                                                 "failing_runs": st.failing_runs}})
+        window = store.matches_in_window(report_start, end)
+        # Per-city/section feed addresses: kept stable across runs (see feeds.py).
+        feeds, retired = feed_paths.assign(feed_paths.watched_names(statuses, window), store.feed_history())
+        store.record_feeds(feeds)
         return RunResult(
             run_id=run_id, start=start, end=end, statuses=statuses,
             new_matches=store.matches_for_run(run_id),
             upcoming=store.upcoming_with_matches(today),
             previous_run=store.previous_run_time(run_id),
-            window_matches=store.matches_in_window(report_start, end),
+            window_matches=window,
             report_start=report_start,
             run_started=store.run_started(run_id),
             today=today,
+            feeds=feeds,
+            retired_feeds=retired,
         )
     finally:
         store.close()
