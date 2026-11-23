@@ -573,11 +573,14 @@ footer p{margin:4px 0}
   // Some agenda hosts send "Content-Disposition: attachment", so clicking the file downloads it
   // instead of showing it. Those hosts allow cross-origin reads, so fetch the file here and open it
   // in a new tab as a blob, which the browser's own viewer displays. If anything goes wrong the new
-  // tab just loads the original link. Ctrl/Shift/middle-click keep the browser's default behaviour.
+  // tab is closed and the file downloads as before. Ctrl/Shift/middle-click keep the default.
   var FORCED_DOWNLOAD = [
     /^https:\/\/[^\/]+\.api\.civicclerk\.com\/v1\/Meetings\/GetMeetingFileStream\(/i
   ];
-  var VIEWABLE = /^(application\/pdf|image\/|text\/plain)/i;
+  // Only types that can't run script: a blob: URL has this page's origin, so an SVG or HTML file
+  // opened this way could read this site's storage.
+  var VIEWABLE = /^(application\/pdf|text\/plain)\b/i;
+  var FETCH_TIMEOUT_MS = 60000;
   document.addEventListener("click", function (e) {
     var a = e.target.closest && e.target.closest("a[href]");
     if (!a || e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
@@ -592,15 +595,25 @@ footer p{margin:4px 0}
       w.document.title = "Loading…";
       w.document.body.textContent = "Loading " + (a.textContent || "document") + "…";
     } catch (err) { /* tab not scriptable; the navigation below still works */ }
-    fetch(url, { credentials: "omit" }).then(function (r) {
+    var ctl = window.AbortController ? new AbortController() : null;
+    var timer = ctl && setTimeout(function () { ctl.abort(); }, FETCH_TIMEOUT_MS);
+    fetch(url, { credentials: "omit", signal: ctl ? ctl.signal : undefined }).then(function (r) {
       if (!r.ok) throw new Error("HTTP " + r.status);
       return r.blob();
     }).then(function (b) {
-      if (!VIEWABLE.test(b.type)) throw new Error("not viewable: " + b.type);
+      if (VIEWABLE.test(b.type)) return b;
+      // Forced downloads are often labelled application/octet-stream; trust the bytes for PDFs.
+      return b.slice(0, 5).text().then(function (head) {
+        if (head !== "%PDF-") throw new Error("not viewable: " + b.type);
+        return new Blob([b], { type: "application/pdf" });
+      });
+    }).then(function (b) {
       w.location.replace(URL.createObjectURL(b) + hash);   // #page=N still works in the PDF viewer
     }).catch(function () {
-      w.location.replace(a.href);
-    });
+      // Don't leave a "Loading…" tab behind: close it and let this page start the download.
+      try { w.close(); } catch (err) { /* already gone */ }
+      location.href = a.href;
+    }).then(function () { if (timer) clearTimeout(timer); });
   });
 
   // ---- start ---------------------------------------------------------------
