@@ -9,7 +9,16 @@ from urllib.parse import urlencode
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 
-from agendawatch.http import FetchError
+from agendawatch.http import Download, FetchError
+
+
+class Resp:
+    """A canned file response with validators, for testing conditional downloads."""
+
+    def __init__(self, body: bytes, etag: str | None = None, last_modified: str | None = None,
+                 content_type: str | None = None):
+        self.body, self.etag, self.last_modified = body, etag, last_modified
+        self.content_type = content_type or ("application/pdf" if body.startswith(b"%PDF") else "text/html")
 
 
 def make_pdf(pages: list[str]) -> bytes:
@@ -31,6 +40,7 @@ class FakeHttp:
     def __init__(self, routes: dict[str, object]):
         self.routes = routes
         self.calls: list[str] = []
+        self.conditional: dict[str, tuple] = {}  # url → (etag, last_modified) sent with fetch()
         self.host_headers: dict[str, dict] = {}
 
     def set_host_headers(self, host, headers):
@@ -60,9 +70,21 @@ class FakeHttp:
         val = self._lookup(url, params)
         return json.loads(val) if isinstance(val, (str, bytes)) else val
 
-    def download(self, url):
+    def fetch(self, url, etag=None, last_modified=None):
         val = self._lookup(url)
+        if etag or last_modified:
+            self.conditional[url] = (etag, last_modified)
+        if isinstance(val, Resp):
+            unchanged = ((etag and etag == val.etag)
+                         or (not etag and last_modified and last_modified == val.last_modified))
+            if unchanged:
+                return Download(b"", val.content_type, url, val.etag, val.last_modified, not_modified=True)
+            return Download(val.body, val.content_type, url, val.etag, val.last_modified)
         if isinstance(val, bytes):
             ctype = "application/pdf" if val.startswith(b"%PDF") else "text/html"
-            return val, ctype, url
-        return str(val).encode(), "text/html", url
+            return Download(val, ctype, url)
+        return Download(str(val).encode(), "text/html", url)
+
+    def download(self, url):
+        d = self.fetch(url)
+        return d.body, d.content_type, d.url
