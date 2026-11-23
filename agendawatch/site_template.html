@@ -33,7 +33,7 @@ header p{margin:0;color:var(--muted)}
 .termsbox{margin:0}
 .termsbox summary{font-weight:400;font-size:.85rem;color:var(--muted)}
 .termsbox .terms{margin-top:8px}
-.active{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.active{display:flex;flex-wrap:wrap;gap:6px;align-items:center;max-height:4.2em;overflow-y:auto}
 .activechip{font:inherit;font-size:.8rem;background:var(--chip);color:var(--chipink);border:1px solid var(--chipink);border-radius:999px;padding:1px 8px 1px 10px;cursor:pointer}
 .activechip span{margin-left:4px;font-weight:700}
 .controls label{display:inline-flex;gap:6px;align-items:center;font-size:.92rem}
@@ -49,7 +49,7 @@ header p{margin:0;color:var(--muted)}
 .termbtn[aria-pressed=true]{background:var(--chip);color:var(--chipink);border-color:var(--chipink);font-weight:600}
 .summary{color:var(--muted);font-size:.9rem;margin:0}
 h2{font-size:1.2rem;margin:34px 0 12px;padding-bottom:6px;border-bottom:2px solid var(--accent)}
-.meeting{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:0 0 12px;scroll-margin-top:140px}
+.meeting{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:0 0 12px;scroll-margin-top:calc(var(--bar-h, 140px) + 12px)}
 .meeting.target{box-shadow:0 0 0 3px var(--focus)}
 .meeting h3{margin:0;font-size:1.05rem}
 .meta{color:var(--muted);font-size:.9rem;margin:2px 0 8px;display:flex;flex-wrap:wrap;gap:4px 12px}
@@ -102,7 +102,7 @@ footer p{margin:4px 0}
 .cal-dot{display:none}
 #day-panel h2 .note{font-weight:400;margin-left:8px}
 .linkbtn{font:inherit;font-size:.85rem;background:none;border:0;color:var(--accent);cursor:pointer;padding:0;text-decoration:underline}
-@media (max-width:600px){.wrap{padding-top:16px}.bar input[type=search]{flex-basis:100%}.bar .filterbtn{margin-left:auto}.viewtoggle .termbtn{padding:4px 10px}.panel{max-height:60vh}
+@media (max-width:600px){.wrap{padding-top:16px}.bar input[type=search]{flex-basis:100%}.bar .filterbtn{margin-left:auto}.viewtoggle .termbtn{padding:4px 10px}.panel{max-height:38vh}.active{max-height:2.1em}
 .cal-cell{min-height:50px;align-items:center;padding:4px 2px}.daynum{align-self:center}
 .pill,.cal-more{display:none}
 .cal-dot{display:inline-block;min-width:1.5em;font-size:.7rem;font-weight:700;text-align:center;background:var(--chip);color:var(--chipink);border-radius:999px}
@@ -250,8 +250,22 @@ footer p{margin:4px 0}
     fToggle.setAttribute("aria-expanded", open ? "true" : "false");
     if (save) pref(PANEL_KEY, open ? "open" : "closed");
   }
-  fToggle.addEventListener("click", function () { setPanel(fPanel.hidden, true); update(); });
+  fToggle.addEventListener("click", function () { setPanel(fPanel.hidden, true); renderActive(); });
   setPanel(pref(PANEL_KEY) === "open", false);
+  fPanel.addEventListener("keydown", function (e) {
+    if (e.key !== "Escape") return;
+    setPanel(false, true);
+    renderActive();
+    fToggle.focus();
+  });
+  // Anchor jumps (#m-…) leave room for the pinned bar, whose height changes with chips and the panel.
+  var controls = document.querySelector(".controls");
+  function syncBarHeight() {
+    var pinned = getComputedStyle(controls).position === "sticky";
+    document.documentElement.style.setProperty("--bar-h", (pinned ? controls.offsetHeight : 0) + "px");
+  }
+  if (window.ResizeObserver) new ResizeObserver(syncBarHeight).observe(controls);
+  window.addEventListener("resize", syncBarHeight);
   function setPressed(container, attr, key, on) {
     Array.prototype.forEach.call(container.querySelectorAll("button"), function (b) {
       if ((attr ? b.getAttribute(attr) : b.textContent) === key) b.setAttribute("aria-pressed", on ? "true" : "false");
@@ -261,7 +275,14 @@ footer p{margin:4px 0}
     var chips = [];
     function chip(label, clear) {
       var b = el("button", { type: "button", class: "activechip", "aria-label": "Remove filter: " + label }, [label, el("span", { "aria-hidden": "true", text: "×" })]);
-      b.addEventListener("click", function () { clear(); update(); });
+      var at = chips.length;
+      b.addEventListener("click", function () {
+        clear();
+        update();
+        // the chips were rebuilt: focus the one now in this place, else the previous, else Filters
+        var now = fActive.querySelectorAll(".activechip");
+        (now[at] || now[at - 1] || fToggle).focus();
+      });
       chips.push(b);
     }
     if (fSec.value) chip(fSec.value, function () { fSec.value = ""; });
@@ -277,6 +298,7 @@ footer p{margin:4px 0}
     fActive.textContent = "";
     // Shown under the bar while the panel is closed, so a filter is never hidden from view.
     fActive.hidden = !chips.length || !fPanel.hidden;
+    if (window.requestAnimationFrame) requestAnimationFrame(syncBarHeight); else syncBarHeight();
     if (fActive.hidden) return;
     chips.forEach(function (c) { fActive.appendChild(c); });
     if (chips.length > 1) {
@@ -287,6 +309,7 @@ footer p{margin:4px 0}
         Object.keys(activeTerms).forEach(function (k) { activeTerms[k] = false; });
         Array.prototype.forEach.call(fPanel.querySelectorAll("button[aria-pressed]"), function (b) { b.setAttribute("aria-pressed", "false"); });
         update();
+        fToggle.focus();
       });
       fActive.appendChild(all);
     }
@@ -714,9 +737,17 @@ footer p{margin:4px 0}
 
   // ---- header, sources, footer --------------------------------------------
   function fmtStamp(ts) { return ts ? new Date(ts).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "—"; }
-  document.getElementById("stamp").textContent = "Updated " + fmtStamp(DATA.generated) +
-    " · meetings " + fmtDay(DATA.window.start) + " to " + fmtDay(DATA.window.end) + " · watching " + plural(DATA.terms.length, "term");
-  document.getElementById("stamp").title = DATA.terms.join(", ");
+  var termsLink = el("button", { type: "button", class: "linkbtn", "aria-controls": "f-panel", text: plural(DATA.terms.length, "term") });
+  termsLink.addEventListener("click", function () {
+    setPanel(true, true);
+    fTermsWrap.open = true;
+    renderActive();
+    fTermsWrap.querySelector("summary").focus();
+  });
+  var stampEl = document.getElementById("stamp");
+  stampEl.textContent = "Updated " + fmtStamp(DATA.generated) +
+    " · meetings " + fmtDay(DATA.window.start) + " to " + fmtDay(DATA.window.end) + " · watching ";
+  stampEl.appendChild(termsLink);
   document.getElementById("f-terms-n").textContent = "(" + DATA.terms.length + ")";
   document.getElementById("foot-run").textContent = "Last run started " + fmtStamp(DATA.run.started) +
     (DATA.run.previous ? "; previous run " + fmtStamp(DATA.run.previous) : "") + ".";
