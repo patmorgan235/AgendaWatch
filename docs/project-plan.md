@@ -1,6 +1,6 @@
 # AgendaWatch — Project Plan
 
-_Last updated: November 22, 2026 (Phases 0–4 complete; next: Phase 5, coverage)_
+_Last updated: November 22, 2026 (Phases 0–4 complete; next: Phase 5, tags & terms)_
 
 ## Goal
 
@@ -54,6 +54,9 @@ A searchable history of past agenda items is useful but secondary.
 | Cloud | **Azure** (owner's most familiar platform) | Storage is kept behind an interface so it can move to S3 or R2 later. |
 | Report delivery | Static site built from a published JSON data file | Filtering happens in the browser; RSS and calendar feeds come from the same data; fixes the hidden-earlier-finds gap. |
 | Term list | Maintained by the owner in `config.yaml` | No admin interface needed. |
+| Change workflow | Every change goes on a branch and through a GitHub pull request; merging to `main` deploys | A second collaborator joined on Nov 22, 2026. Tests run on every pull request. |
+| Sources that block cloud IPs | Fetched from the owner's home machine (the "hybrid fetch") and handed to the hosted run | Approved Nov 22, 2026. Restores full notice for Richardson (cor.net) and Hurst. |
+| Irving | A real headless browser on the home machine loads the agenda page, passing Cloudflare's check as a normal browser does | Approved Nov 22, 2026. No challenge-solving code, and nothing runs from the cloud. If Irving's PrimeGov portal goes live, use its API instead. |
 
 ## Target architecture (Azure)
 
@@ -209,28 +212,81 @@ so it came first.
 - Hurst will show as failing every run from Azure, as expected (Phase 0).
 - **Possible follow-up:** a Log Analytics alert on `stale_source` events, so a quiet source emails you instead of waiting for someone to open the Sources table.
 
-### Phase 5 — Coverage
+### Phase 5 — Tags and terms (next)
 
-- [ ] Add the transit agency boards: DART Board and committees, Trinity Metro Board, DCTA Board, and NCTCOG STTC.
-- [ ] Revisit the blocked and unresolved sources (Arlington, Rockwall, Corinth), and contact cities about the blocked ones (Irving, Tarrant County, the Municode Meetings and AgendaLink cities).
-- [ ] Read deeper where possible: Legistar attachments for key bodies, and Fort Worth staff reports if a sanctioned way to read them appears.
+Today there are 11 flat terms, and "Transit" alone is 42% of mentions (77 of 183 after the Nov 22 reset).
+
+- [ ] **Tags:** each term in `config.yaml` gets one or more tags, in three groups:
+  - **Agency:** DART, DCTA, Trinity Metro, RTC/NCTCOG.
+  - **Mode:** rail, bus, streetcar, paratransit, on-demand.
+  - **Topic:** funding (GMP, General Mobility Program), DART membership and withdrawal, transit-oriented development.
+
+  Matches carry their tags into `data.json`, the page, the feed and the calendar.
+- [ ] **New terms**, each with tags. Candidates: Silver Line, TEXRail, TRE, light rail, bus rapid transit, GoLink / microtransit / on-demand transit, park-and-ride, transit-oriented development, withdrawal election. **Open:** the owner picks the final list.
+- [ ] **Action tags** from the text around each match: interlocal agreement, contract or award, resolution or ordinance, public hearing, presentation or briefing. This separates "the council votes on a DART agreement" from "DART appears in a list of agencies".
+- [ ] **Noise rules:** after about a week of daily runs, add `exclude_if_nearby` rules for recurring boilerplate, such as Garland's list of agencies, which includes "(3) Dallas Area Rapid Transit Authority".
+- [ ] Re-tag existing matches when tags change, rather than re-downloading agendas.
+
+**Done when:** every match shows its tags; the page filters by tag and action type; and the share of "Transit"-only passing mentions has dropped measurably on real data.
+
+### Phase 6 — Coverage: Richardson and Irving
+
+- [ ] **Richardson, a source that needs no workaround:** look for an earlier posting cor.net doesn't block from the cloud before building anything. Candidates: the "Agendas, Notices & Actions" page, a CivicAlerts or RSS feed, a Granicus or Swagit "upcoming" view.
+- [ ] **Hybrid fetch** for sources that block cloud IPs (cor.net for Richardson, hursttx.gov for Hurst):
+  - **At home:** a scheduled task on the owner's machine (cron or systemd timer) lists those sources, downloads new or changed agendas, and uploads the files plus a small manifest to an `inbox` container in the storage account. It authenticates with a credential that can only write to `inbox`.
+  - **In Azure:** the hosted run reads the inbox through a new `inbox` source type, using the original agenda URLs as links. The database keeps a single writer.
+  - Sources marked `fetch: home` are skipped by the cloud run, so they don't show daily 403s. Their health shows when the inbox was last filled, and a stale inbox is flagged.
+- [ ] **Irving:**
+  - A headless Chrome (Playwright) script on the home machine loads irvingtx.gov's agenda page as a normal browser would, collects the agenda links, and downloads the PDFs into the same inbox.
+  - The script runs at the same polite daily rate; it doesn't solve or skip Cloudflare's check in code.
+  - If the challenge escalates to something only a person can complete, Irving is reported as unavailable rather than worked around.
+- [ ] **Irving PrimeGov reader:** build it now, switched off, plus a check that reports when the portal has real meetings; then switch from the browser fetch to the API.
+- [ ] Update the runbook: setting up the home fetcher, its credential, and what happens when the machine is off. Sources fall back or go stale, and the stale-source check flags it.
+
+**Done when:** Richardson's council agendas appear about 6 days ahead on the public site again; Irving's council agendas are covered; and turning the home machine off for a day degrades gracefully and visibly.
+
+### Phase 7 — Search and filtering
+
+- [ ] **Full-text search** of agenda text, not just snippets. Publish a compact search index of the text of meetings in the report window, and search it in the browser, so terms that aren't on the watch list can be found ("bus stop on Belt Line").
+- [ ] **Filters:**
+  - multi-select for cities and sections;
+  - tags and action type (from Phase 5);
+  - a date range instead of only upcoming or all;
+  - meeting body type (council, planning commission, committees and boards);
+  - "has an action item".
+- [ ] **Sorting:** by meeting date, by number of mentions, or by newest found.
+- [ ] **Named presets** on top of the shareable URL filters, for example "DART cities, action items, next 2 weeks".
+- [ ] Keep `data.json` and the page fast on a phone as the data grows: lazy-load the search index, and cap snippets per meeting.
+
+**Done when:** a word not on the term list can be found in the current window's agendas, and the filters above work together and survive a shared link.
+
+### Phase 8 — Deferred coverage
+
+- [ ] **Transit agency boards** (deferred Nov 22, 2026): the DART Board and its committees, the Trinity Metro Board, the DCTA Board, and NCTCOG's Surface Transportation Technical Committee.
+- [ ] Revisit the remaining blocked and unresolved sources: Arlington, Rockwall, Corinth, Tarrant County, and the Municode Meetings and AgendaLink cities. The hybrid fetch from Phase 6 may cover some of them.
+- [ ] Read deeper where possible: Legistar attachments for key bodies (Dallas stays on agenda PDFs only for now, by choice), and Fort Worth staff reports if a sanctioned way to read them appears.
 
 ### Later
 
-- **Hybrid fetch for cloud-blocked sources:** a small job on a home connection fetches only the sources that block data-center IPs (Richardson's cor.net and Hurst today) and uploads their results to the same storage, restoring full lead time for them. It depends on that machine being on.
-- Searchable history: a static search page or a published read-only copy of the database.
-- Email or Slack alerts for new matches.
-- Ranking or triage: separate action items from passing mentions; reduce noise from broad terms such as "Transit".
+- Searchable history beyond the 30-day report window: a static search page or a published read-only copy of the database.
+- Email or Slack alerts for new matches, and an email alert for stale sources.
+
+## How we work
+
+- **Branches and pull requests:** every change goes on a branch and through a pull request. GitHub Actions runs the tests on each pull request, and merging to `main` builds the image and deploys it to Azure.
+- **Branch protection (suggested, not yet on):** require a pull request and passing tests before merging to `main`, and optionally a review from the collaborator.
 
 ## Risks and open questions
 
 | Risk or question | Mitigation or next step |
 |---|---|
-| Data-center IP addresses get blocked by city sites | Phase 0: only Richardson (cor.net) and Hurst were blocked. Richardson falls back to Swagit; the hybrid fetch job is in the backlog. Re-check when adding sources. |
-| Browser mode for cor.net (Richardson) on a public service | Moot from Azure (cor.net blocks data-center addresses either way); revisit if the hybrid job is built. |
+| Data-center IP addresses get blocked by city sites | Phase 0: only Richardson (cor.net) and Hurst were blocked. Richardson falls back to Swagit for now; the hybrid fetch (Phase 6) restores full notice. Re-check when adding sources. |
+| Browser mode for cor.net (Richardson) on a public service | Moot from Azure (cor.net blocks data-center addresses either way). The hybrid fetch keeps the browser User-Agent and HTTP/2 from the home machine. |
+| Hybrid fetch depends on the owner's home machine | Fallbacks stay in place (Swagit for Richardson); the stale-source check flags an inbox that stops filling; the home fetcher's credential can only write to `inbox`. |
+| Irving's Cloudflare check escalates (for example to something only a person can complete) | Report Irving as unavailable rather than work around it; keep watching for PrimeGov to go live. |
 | Agenda platforms change without notice | Stale-source check (Phase 4); the per-platform readers are kept small and tested. |
 | Database growth from large packets (for example, Dallas County's 1,750-page agendas) | Page-text retention limits (Phase 2). |
-| Noise from broad terms across 42+ sources | Filters (Phase 1); triage (Later). |
+| Noise from broad terms across 42+ sources | Filters (Phase 1); tags, action tags and noise rules (Phase 5). |
 | Custom domain | Live at https://agendas.urbancivic.cloud through Cloudflare (Phase 3). |
 
 ## Source notes
