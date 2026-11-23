@@ -2,3 +2,4 @@
 azure-storage-blob>=12.19   # AGENDAWATCH_STORAGE=azure
 azure-identity>=1.15        # managed identity / DefaultAzureCredential
 boto3>=1.35                 # AGENDAWATCH_STORAGE=s3 (conditional writes need 1.35+)
+google-auth>=2.29            # Google Calendar sync (google_calendar in config.yaml)

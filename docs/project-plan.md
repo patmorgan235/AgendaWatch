@@ -266,10 +266,25 @@ Today there are 11 flat terms, and "Transit" alone is 42% of mentions (77 of 183
 - [ ] Revisit the remaining blocked and unresolved sources: Arlington, Rockwall, Corinth, Tarrant County, and the Municode Meetings and AgendaLink cities. The hybrid fetch from Phase 6 may cover some of them.
 - [ ] Read deeper where possible: Legistar attachments for key bodies (Dallas stays on agenda PDFs only for now, by choice), and Fort Worth staff reports if a sanctioned way to read them appears.
 
+### Phase 9 — Calendars
+
+- [x] **Calendar view** on the site: a month grid next to the list. Pick a day to see its meetings. It works with the keyboard and on phones, and the view, month and day are kept in the URL.
+- [x] **Add to calendar** on every meeting: a prefilled Google Calendar link and a one-event `.ics`.
+- [x] **Per-city and per-section feeds** (`feeds/city/<city>.ics|.xml`, `feeds/section/…`). They're listed in the page's Subscribe panel with "Add to Google Calendar" links, and written even when empty so links never break.
+- [x] **Google Calendar push** into calendars the owner runs (one per town, section, or all). It's idempotent (stable event IDs, content hashes), only touches its own events, and never fails the run. The key lives in Key Vault. Setup is in the runbook, "Google Calendar sync".
+- [ ] Create the town calendars, store the key, and turn it on (`GOOGLE_CALENDAR=true infra/deploy.sh`).
+
 ### Later
 
 - Searchable history beyond the 30-day report window: a static search page or a published read-only copy of the database.
 - Email or Slack alerts for new matches, and an email alert for stale sources.
+- **Calendar of all meetings:** show every listed meeting, with the ones mentioning a term highlighted. This needs every document in the window published, not just matches.
+- **Code-health follow-ups:**
+  - use the run date everywhere instead of today's date;
+  - make backfill cover month-based link pages;
+  - run sources in parallel, with per-host throttling;
+  - pin dependency versions and add `ruff` to CI.
+- **Keyless Google auth:** workload identity federation from Azure to Google Cloud, instead of a stored service-account key.
 
 ## How we work
 

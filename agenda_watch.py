@@ -6,6 +6,7 @@
   python agenda_watch.py check            show what each city's source finds (no downloads)
   python agenda_watch.py search "bus rapid transit"   search every agenda already downloaded
   python agenda_watch.py job              hosted run: database and site in cloud storage (see README)
+  python agenda_watch.py gcal --dry-run   preview pushing meetings to your Google Calendars
 """
 
 from __future__ import annotations
@@ -79,6 +80,36 @@ def cmd_job(args, cfg) -> int:
     return run_job(cfg, storage_from_env(), backfill_days=backfill)
 
 
+def cmd_gcal(args, cfg) -> int:
+    import json
+
+    from agendawatch.gcal import GcalError, calendars_from_config, session_from_env, sync
+
+    calendars = calendars_from_config(cfg)
+    if not calendars:
+        print("No Google calendars configured: add google_calendar.calendars to config.yaml (see docs/runbook.md).")
+        return 2
+    data_path = Path(args.data or Path(cfg["settings"]["report_dir"]) / "data.json")
+    if not data_path.exists():
+        print(f"{data_path} not found: run `agenda_watch.py run` first, or pass --data.")
+        return 2
+    try:
+        session = session_from_env()
+    except GcalError as exc:
+        print(exc)
+        return 2
+    if session is None:
+        print("No credentials: set AGENDAWATCH_GOOGLE_CREDENTIALS (key JSON) or GOOGLE_APPLICATION_CREDENTIALS (key file).")
+        return 2
+    res = sync(session, json.loads(data_path.read_text(encoding="utf-8")), calendars, dry_run=args.dry_run)
+    for line in res.actions:
+        print(("would " if args.dry_run else "") + line)
+    for err in res.errors:
+        print(f"! {err}")
+    print(("Dry run: " if args.dry_run else "") + res.summary())
+    return 2 if res.errors else 0
+
+
 def cmd_search(args, cfg) -> int:
     store = Store(cfg["settings"]["database"])
     if args.regex:
@@ -116,6 +147,10 @@ def main(argv=None) -> int:
     p_job.add_argument("--backfill", type=int, metavar="DAYS",
                        help="look back this many days this run (or set AGENDAWATCH_BACKFILL_DAYS)")
 
+    p_g = sub.add_parser("gcal", help="push meetings to your Google Calendars (google_calendar in config.yaml)")
+    p_g.add_argument("--dry-run", action="store_true", help="show what would change without changing anything")
+    p_g.add_argument("--data", metavar="PATH", help="data.json to read (default: report_dir/data.json)")
+
     p_s = sub.add_parser("search", help="search agendas already downloaded")
     p_s.add_argument("query")
     p_s.add_argument("--regex", action="store_true", help="treat the query as a regular expression")
@@ -137,7 +172,8 @@ def main(argv=None) -> int:
     for noisy in ("httpx", "httpcore", "hpack", "h2"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
     cfg = load_config(args.config)
-    return {"run": cmd_run, "check": cmd_check, "search": cmd_search, "job": cmd_job}[args.cmd](args, cfg)
+    return {"run": cmd_run, "check": cmd_check, "search": cmd_search, "job": cmd_job,
+            "gcal": cmd_gcal}[args.cmd](args, cfg)
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@
 //   Log Analytics       container logs (the job writes one JSON object per line)
 //   Container Apps      environment + scheduled job running `agenda_watch.py job`
 //   Alert (optional)    email when no successful run has been logged for 26 hours
+//   Key Vault           Google service-account key for the optional Google Calendar push
 //
 // Deploy with infra/deploy.sh, which also turns on the static website (not settable from Bicep).
 
@@ -51,9 +52,16 @@ param alertEmail string = ''
 param cpu string = '2.0'
 param memory string = '4Gi'
 
+@description('Push meetings to Google Calendars (google_calendar in config.yaml). Turn on only after the service-account key is stored in the Key Vault as the secret "google-credentials" (see docs/runbook.md, "Google Calendar sync").')
+param googleCalendar bool = false
+
+@description('Object ID of the person who stores the Google key in the Key Vault (granted Key Vault Secrets Officer). deploy.sh fills in the signed-in user. Empty = no grant.')
+param secretsOfficerPrincipalId string = ''
+
 var suffix = uniqueString(resourceGroup().id)
 var storageName = toLower('${take(prefix, 12)}${take(suffix, 12)}')
 var registryName = toLower('${take(prefix, 12)}acr${take(suffix, 10)}')
+var vaultName = toLower('${take(prefix, 8)}kv${take(suffix, 13)}')
 var isPlaceholder = startsWith(image, 'mcr.microsoft.com/k8se/')
 
 // Built-in role definition IDs
@@ -63,6 +71,41 @@ var roles = {
   acrPush: '8311e382-0749-4cb8-b61a-304f252e45ec'
   contributor: 'b24988ac-6180-42a0-ab88-20f7382dd24c'
   managedIdentityOperator: 'f1a07417-d97a-45cb-824c-7a7467783830'
+  keyVaultSecretsUser: '4633458b-17de-408a-b874-0445c86b69e6'
+  keyVaultSecretsOfficer: 'b86a8fe4-44ce-4948-aee5-eccb2c155cd7'
+}
+
+// ---------------------------------------------------------------- Key Vault (Google Calendar key)
+// Holds the Google service-account key. Redeploys never touch secret values, so the key survives them.
+resource vault 'Microsoft.KeyVault/vaults@2023-07-01' = {
+  name: vaultName
+  location: location
+  properties: {
+    tenantId: subscription().tenantId
+    sku: { family: 'A', name: 'standard' }
+    enableRbacAuthorization: true
+    enableSoftDelete: true
+    softDeleteRetentionInDays: 7
+  }
+}
+
+resource jobVaultAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: vault
+  name: guid(vault.id, jobIdentity.id, roles.keyVaultSecretsUser)
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roles.keyVaultSecretsUser)
+    principalId: jobIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource ownerVaultAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(secretsOfficerPrincipalId)) {
+  scope: vault
+  name: guid(vault.id, secretsOfficerPrincipalId, roles.keyVaultSecretsOfficer)
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roles.keyVaultSecretsOfficer)
+    principalId: secretsOfficerPrincipalId
+  }
 }
 
 // ---------------------------------------------------------------- storage
@@ -230,6 +273,10 @@ resource job 'Microsoft.App/jobs@2024-03-01' = {
       registries: isPlaceholder ? [] : [
         { server: registry.properties.loginServer, identity: jobIdentity.id }
       ]
+      // Read from Key Vault with the job identity at each start, so a rotated key needs no redeploy.
+      secrets: googleCalendar ? [
+        { name: 'google-credentials', keyVaultUrl: '${vault.properties.vaultUri}secrets/google-credentials', identity: jobIdentity.id }
+      ] : []
     }
     template: {
       containers: [
@@ -237,7 +284,7 @@ resource job 'Microsoft.App/jobs@2024-03-01' = {
           name: 'agendawatch'
           image: image
           resources: { cpu: json(cpu), memory: memory }
-          env: [
+          env: concat([
             { name: 'AGENDAWATCH_STORAGE', value: 'azure' }
             { name: 'AGENDAWATCH_AZURE_ACCOUNT_URL', value: storage.properties.primaryEndpoints.blob }
             { name: 'AGENDAWATCH_AZURE_CLIENT_ID', value: jobIdentity.properties.clientId }
@@ -245,12 +292,14 @@ resource job 'Microsoft.App/jobs@2024-03-01' = {
             { name: 'AGENDAWATCH_SETTING_PAGE_RETENTION_DAYS', value: string(pageRetentionDays) }
             { name: 'AGENDAWATCH_LOG_FORMAT', value: 'json' }
             { name: 'TZ', value: 'America/Chicago' }   // report timestamps are local (Central) time
-          ]
+          ], googleCalendar ? [
+            { name: 'AGENDAWATCH_GOOGLE_CREDENTIALS', secretRef: 'google-credentials' }
+          ] : [])
         }
       ]
     }
   }
-  dependsOn: [ jobBlobAccess, jobPull ]
+  dependsOn: [ jobBlobAccess, jobPull, jobVaultAccess ]
 }
 
 resource deployUpdatesJob 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
@@ -325,3 +374,4 @@ output jobName string = job.name
 output jobIdentityClientId string = jobIdentity.properties.clientId
 output deployIdentityClientId string = deployIdentity.properties.clientId
 output logAnalyticsWorkspace string = logs.name
+output keyVaultName string = vault.name
