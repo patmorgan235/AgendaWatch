@@ -90,3 +90,38 @@ def test_parse_dates():
     assert parse_date("February25, 2020") == date(2020, 2, 25)
     assert parse_date("City Council - 17 Nov 2026 - Agenda") == date(2026, 11, 17)
     assert parse_date("no date") is None
+
+
+def _docx(paragraphs):
+    import io, zipfile
+    body = "".join(
+        '<w:p><w:r><w:br w:type="page"/></w:r></w:p>' if p == "<pagebreak>" else f"<w:p><w:r><w:t>{p}</w:t></w:r></w:p>"
+        for p in paragraphs)
+    xml = ('<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+           f"<w:body>{body}</w:body></w:document>")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("[Content_Types].xml", "<Types/>")
+        z.writestr("word/document.xml", xml)
+    return buf.getvalue()
+
+
+def test_word_docx_agenda():
+    from agendawatch.extract import extract_pages
+    pages, note = extract_pages(_docx(["PARK BOARD AGENDA", "Item 2. DART bus stop", "<pagebreak>", "Item 7. Trinity Metro"]),
+                                "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    assert note == "Word document" and len(pages) == 2
+    assert "Item 2. DART bus stop" in pages[0] and "Trinity Metro" in pages[1]
+    assert names(" ".join(pages))["DART"] == 1
+    # detected from the bytes even when the server sends a generic content type
+    assert extract_pages(_docx(["Hello"]), "application/octet-stream")[1] == "Word document"
+    assert extract_pages(b"PK\x03\x04word/ broken", "application/octet-stream")[1] == "unreadable Word document"
+
+
+def test_non_word_zip_is_not_treated_as_docx():
+    import io, zipfile
+    from agendawatch.extract import extract_pages
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("readme.txt", "x")
+    assert extract_pages(buf.getvalue(), "application/zip")[1] != "Word document"

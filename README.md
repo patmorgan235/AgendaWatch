@@ -125,7 +125,7 @@ Each run writes a small website into `reports/`:
 | `upcoming.ics` | Calendar feed of upcoming meetings whose agendas mention your terms. |
 | `agenda-report-YYYY-MM-DD.html` | That day's snapshot of the page. |
 
-The page shows **every** mention for meetings in the window (10 days back, 60 ahead by default), not just the ones found by the latest run, grouped into sections (DART member cities, DCTA member cities, Trinity Metro member & associate cities, Regional, Counties, Eligible to join a transit agency). You can:
+The page shows **every** mention for meetings in the report window (30 days back via `report_lookback_days`, 60 ahead via `lookahead_days`; each run re-checks only the last 10 days, `lookback_days`), not just the ones found by the latest run, grouped into sections (DART member cities, DCTA member cities, Trinity Metro member & associate cities, Regional, Counties, Eligible to join a transit agency). You can:
 
 - show **upcoming meetings only** (on by default) or include recent past ones;
 - show only what's **new since your last visit** (remembered by your browser; on a first visit, new in the latest run);
@@ -212,7 +212,10 @@ Everything is in `config.yaml`.
 - **A page with one row per meeting:** use `type: doc_table` and list which columns to read in `columns` (see Richardson).
 - **Another city:** if its agendas are at `<name>.portal.civicclerk.com`, copy the Rowlett block and change `tenant`. If it's on Legistar, copy a Legistar block and change `client` to the name before `.legistar.com`. For other sites, use `type: link_page` with the page that lists agendas and a `link_pattern` matching the agenda links.
 
-## Scanned PDFs
+## Scanned PDFs and Word documents
+
+Agendas posted as Word `.docx` files are read too (pages split at the document's page breaks). Older `.doc` files aren't supported.
+
 
 Some packets are scanned images with no text. The report notes these under Sources. To read them, install `ocrmypdf` (macOS: `brew install ocrmypdf`; Ubuntu: `sudo apt install ocrmypdf`; Windows: see the ocrmypdf docs). The tool uses it automatically.
 
@@ -229,7 +232,7 @@ Some packets are scanned images with no text. The report notes these under Sourc
 agenda_watch.py          command line (run / check / search)
 config.yaml              terms, cities, settings
 agendawatch/sources.py   Legistar, CivicClerk, CivicWeb, NovusAGENDA, link-page and document-table adapters
-agendawatch/extract.py   PDF/HTML → per-page text (OCR when needed)
+agendawatch/extract.py   PDF / Word (.docx) / HTML → per-page text (OCR for scanned PDFs)
 agendawatch/matcher.py   term matching, false-positive filters, snippets
 agendawatch/store.py     SQLite: agendas read, page text, matches already reported
 agendawatch/site.py      data.json, report page, Atom and calendar feeds

@@ -89,7 +89,7 @@ def build_data(res: RunResult, terms: list[str], site_url: str | None = None) ->
         "generated": datetime.now().isoformat(timespec="seconds"),
         "run": {"id": res.run_id, "started": res.run_started, "previous": res.previous_run},
         "today": today.isoformat(),
-        "window": {"start": res.start.isoformat(), "end": res.end.isoformat()},
+        "window": {"start": (res.report_start or res.start).isoformat(), "end": res.end.isoformat()},
         "terms": terms,
         "sections": section_order(res),
         "site_url": (site_url or "").rstrip("/") or None,

@@ -49,7 +49,8 @@ class RunResult:
     new_matches: list
     upcoming: list
     previous_run: str | None
-    window_matches: list = field(default_factory=list)   # every match for meetings in start..end
+    window_matches: list = field(default_factory=list)   # every match for meetings in report_start..end
+    report_start: date | None = None     # the report shows meetings from here (≤ start; see report_lookback_days)
     run_started: str | None = None
     today: date | None = None
 
@@ -60,6 +61,9 @@ def make_http(settings: dict) -> Http:
         timeout=float(settings.get("timeout_seconds", 60)),
         max_bytes=int(float(settings.get("max_download_mb", 80)) * 1024 * 1024),
     )
+
+
+_UNREADABLE = ("unsupported file type", "unreadable", "install ocrmypdf")
 
 
 def _process(doc: Document, store: Store, http: Http, terms, settings: dict, run_id: int, st: SourceStatus, today: date) -> None:
@@ -83,7 +87,10 @@ def _process(doc: Document, store: Store, http: Http, terms, settings: dict, run
         return
 
     sha = hashlib.sha256(data).hexdigest()
-    if existing and existing["status"] == "ok" and existing["sha256"] == sha:
+    # Same file as last time: skip it — unless last time we couldn't read it (an unsupported format or
+    # a scanned PDF without OCR), in which case a newer version of the tool may do better.
+    unreadable_before = any(k in (existing["note"] or "") for k in _UNREADABLE) if existing else False
+    if existing and existing["status"] == "ok" and existing["sha256"] == sha and not unreadable_before:
         st.unchanged += 1
         store.save_document(doc, sha, None, "ok", existing["note"] or "")
         return
@@ -143,6 +150,9 @@ def run(config: dict, backfill_days: int | None = None, http: Http | None = None
     lookback = backfill_days if backfill_days is not None else int(settings.get("lookback_days", 10))
     start = today - timedelta(days=lookback)
     end = today + timedelta(days=int(settings.get("lookahead_days", 60)))
+    # The report can show further back than we re-check: meetings already in the database stay
+    # visible for report_lookback_days even though only lookback_days are fetched again.
+    report_start = min(start, today - timedelta(days=int(settings.get("report_lookback_days", 30))))
 
     run_id = store.start_run()
     statuses: list[SourceStatus] = []
@@ -194,7 +204,8 @@ def run(config: dict, backfill_days: int | None = None, http: Http | None = None
             new_matches=store.matches_for_run(run_id),
             upcoming=store.upcoming_with_matches(today),
             previous_run=store.previous_run_time(run_id),
-            window_matches=store.matches_in_window(start, end),
+            window_matches=store.matches_in_window(report_start, end),
+            report_start=report_start,
             run_started=store.run_started(run_id),
             today=today,
         )

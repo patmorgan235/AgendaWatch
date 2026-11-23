@@ -123,3 +123,31 @@ def test_near_empty_document_is_noted(tmp_path):
     r["https://city.example/a/1.pdf"] = "<html><title>Downloading, Please wait...</title></html>"
     st = status(run(c, http=FakeHttp(r), today=date(2026, 9, 1)))
     assert any("almost no text" in n for n in st.notes)
+
+
+def test_report_keeps_recent_past_meetings(tmp_path):
+    # lookback 10 days for fetching, but the report keeps meetings from the last 30
+    c = cfg(tmp_path, report_lookback_days=30)
+    day0 = date(2026, 9, 1)
+    run(c, http=FakeHttp(routes((1, day0 + timedelta(days=3)))), today=day0)
+    later = run(c, http=FakeHttp(routes()), today=day0 + timedelta(days=20))
+    assert later.start == day0 + timedelta(days=10) and later.report_start == day0 - timedelta(days=10)
+    data = build_data(later, ["DART"])
+    assert [m["date"] for m in data["meetings"]] == ["2026-09-04"]   # 16 days ago: outside lookback, inside report
+    assert data["window"]["start"] == "2026-08-22"
+    much_later = run(c, http=FakeHttp(routes()), today=day0 + timedelta(days=40))
+    assert build_data(much_later, ["DART"])["meetings"] == []
+
+
+def test_previously_unreadable_agenda_is_read_again(tmp_path):
+    from agendawatch.store import Store
+    c = cfg(tmp_path)
+    day = date(2026, 9, 1)
+    r = routes((1, date(2026, 9, 3)))
+    run(c, http=FakeHttp(r), today=day)
+    s = Store(c["settings"]["database"])
+    s.db.execute("UPDATE documents SET note='unsupported file type (x)'")   # as if an older version couldn't read it
+    s.db.execute("DELETE FROM matches")
+    s.close()
+    st = status(run(c, http=FakeHttp(r), today=day))
+    assert st.read == 1 and st.unchanged == 0 and st.new_matches == 1

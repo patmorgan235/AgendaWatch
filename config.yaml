@@ -4,6 +4,7 @@
 settings:
   lookback_days: 10          # re-check meetings this many days back (late-posted minutes, amendments)
   lookahead_days: 60         # and this far ahead (agendas usually post 3–7 days before a meeting)
+  report_lookback_days: 30   # the report shows meetings back this far (already-read ones aren't re-fetched)
   database: data/agenda_watch.db
   report_dir: reports       # the site (index.html, data.json, feed.xml, upcoming.ics) is written here
   # site_url: https://agendas.example.org   # where the site is hosted; makes feed links absolute
