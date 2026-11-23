@@ -36,6 +36,17 @@ header p{margin:0;color:var(--muted)}
 .active{display:flex;flex-wrap:wrap;gap:6px;align-items:center;max-height:4.2em;overflow-y:auto}
 .activechip{font:inherit;font-size:.8rem;background:var(--chip);color:var(--chipink);border:1px solid var(--chipink);border-radius:999px;padding:1px 8px 1px 10px;cursor:pointer}
 .activechip span{margin-left:4px;font-weight:700}
+.controls.cities .quick,.controls.cities .filterbtn,.controls.cities .panel,.controls.cities .active{display:none}
+.citygrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,270px),1fr));gap:12px}
+.city{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;scroll-margin-top:calc(var(--bar-h, 140px) + 12px)}
+.city h3{margin:0;font-size:1.02rem}
+.city .row{font-size:.86rem;color:var(--muted);margin:0}
+.city .row strong{color:var(--ink);font-weight:600}
+.city .links{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:.86rem}
+.city .status-ok{color:var(--accent)}
+.city .status-bad{color:var(--warn)}
+.city .actions{margin-top:auto;padding-top:4px}
+.city .linkbtn{text-align:left}
 .controls label{display:inline-flex;gap:6px;align-items:center;font-size:.92rem}
 .controls select,.controls input[type=search]{font:inherit;font-size:.92rem;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);max-width:100%}
 .controls input[type=search]{min-width:10rem;flex:1}
@@ -123,6 +134,7 @@ footer p{margin:4px 0}
     <div class="viewtoggle" role="group" aria-label="View">
       <button type="button" class="termbtn" id="v-list" aria-pressed="true">List</button>
       <button type="button" class="termbtn" id="v-cal" aria-pressed="false">Calendar</button>
+      <button type="button" class="termbtn" id="v-cities" aria-pressed="false">Cities</button>
     </div>
     <button type="button" class="filterbtn" id="f-toggle" aria-expanded="false" aria-controls="f-panel">Filters<span class="count" id="f-count" hidden></span></button>
   </div>
@@ -224,7 +236,7 @@ footer p{margin:4px 0}
   function pref(key, val) {   // per-viewer convenience only; the page works without storage
     try { return val === undefined ? localStorage.getItem(key) : localStorage.setItem(key, val); } catch (e) { return null; }
   }
-  function plural(n, word) { return n + " " + word + (n === 1 ? "" : "s"); }
+  function plural(n, word, many) { return n + " " + (n === 1 ? word : many || word + "s"); }
 
   // ---- "new since your last visit" ----------------------------------------
   var lastVisit = store(true);
@@ -316,6 +328,7 @@ footer p{margin:4px 0}
   }
   var VIEW_KEY = "agendawatch.view";
   var vList = document.getElementById("v-list"), vCal = document.getElementById("v-cal"),
+      vCities = document.getElementById("v-cities"),
       fUpLabel = document.getElementById("f-upcoming-label");
   var view = "list";            // "list" | "calendar"
   var calMonth = firstOfMonth(localToday());
@@ -327,12 +340,17 @@ footer p{margin:4px 0}
   var maxMonth = firstOfMonth(new Date(Math.max(parseDay(DATA.window.end), localToday())));
   function clampMonth(d) { return d < minMonth ? minMonth : d > maxMonth ? maxMonth : d; }
   function setView(v) {
-    view = v === "calendar" ? "calendar" : "list";
+    view = v === "calendar" || v === "cities" ? v : "list";
     vList.setAttribute("aria-pressed", view === "list" ? "true" : "false");
     vCal.setAttribute("aria-pressed", view === "calendar" ? "true" : "false");
+    vCities.setAttribute("aria-pressed", view === "cities" ? "true" : "false");
+    // In the Cities view only the search box applies (it filters the cities).
+    document.querySelector(".controls").classList.toggle("cities", view === "cities");
+    fQ.placeholder = view === "cities" ? "Search cities and agencies…" : "Search snippets, cities, meetings…";
   }
   vList.addEventListener("click", function () { setView("list"); pref(VIEW_KEY, "list"); update(); });
   vCal.addEventListener("click", function () { setView("calendar"); pref(VIEW_KEY, "calendar"); update(); });
+  vCities.addEventListener("click", function () { setView("cities"); pref(VIEW_KEY, "cities"); update(); });
 
   DATA.sections.forEach(function (s) {
     if (DATA.meetings.some(function (m) { return m.section === s; })) fSec.appendChild(el("option", { value: s, text: s }));
@@ -405,6 +423,7 @@ footer p{margin:4px 0}
   }
   function writeQuery() {
     var q = new URLSearchParams();
+    if (view === "cities") q.set("view", "cities");
     if (view === "calendar") {
       q.set("view", "calendar");
       q.set("month", isoOf(calMonth).slice(0, 7));
@@ -522,7 +541,9 @@ footer p{margin:4px 0}
     var items = filtered(cal);
     var root = document.getElementById("results");
     root.textContent = "";
-    if (cal) renderCalendar(root, items); else renderList(root, items);
+    if (view === "cities") renderCities(root);
+    else if (cal) renderCalendar(root, items);
+    else renderList(root, items);
     renderFeeds();
     writeQuery();
   }
@@ -558,6 +579,106 @@ footer p{margin:4px 0}
   }
   document.getElementById("subscribe-link").addEventListener("click", function () { feedWrap.open = true; });
   feedWrap.addEventListener("toggle", renderFeeds);   // build the table when the panel is opened
+  // ---- cities view: one card per city / agency -----------------------------
+  function showCity(city, meetingId) {
+    // Open the list filtered to this city (other filters cleared, so nothing hides its meetings).
+    setView("list");
+    pref(VIEW_KEY, "list");
+    fSec.value = ""; fQ.value = "";
+    Object.keys(activeTags).forEach(function (k) { activeTags[k] = false; });
+    Object.keys(activeTerms).forEach(function (k) { activeTerms[k] = false; });
+    Array.prototype.forEach.call(fPanel.querySelectorAll("button[aria-pressed]"), function (b) { b.setAttribute("aria-pressed", "false"); });
+    fNew.checked = false; fAct.checked = false;
+    var mine = DATA.meetings.filter(function (m) { return m.city === city; });
+    var target = meetingId ? mine.filter(function (m) { return m.id === meetingId; })[0] : null;
+    fUp.checked = target ? isUpcoming(target) : mine.some(isUpcoming);
+    fillCities();
+    fCity.value = city;
+    update();
+    var node = target && document.getElementById("m-" + target.id);
+    if (node) { node.classList.add("target"); node.scrollIntoView(); } else window.scrollTo(0, 0);
+  }
+  function renderCities(root) {
+    var needle = fQ.value.trim().toLowerCase();
+    var order = [], byCity = {};
+    DATA.sources.forEach(function (s) {
+      if (!byCity[s.city]) { byCity[s.city] = []; order.push(s.city); }
+      byCity[s.city].push(s);
+    });
+    var feedOf = {};
+    (DATA.feeds || []).forEach(function (f) { if (f.kind === "city") feedOf[f.name] = f; });
+    var cities = order.filter(function (c) {
+      return !needle || (c + " " + byCity[c].map(function (s) { return s.name + " " + s.section; }).join(" ")).toLowerCase().indexOf(needle) >= 0;
+    });
+    var withUpcoming = 0;
+    var sections = DATA.sections.slice();
+    cities.forEach(function (c) { var sec = byCity[c][0].section; if (sections.indexOf(sec) < 0) sections.push(sec); });
+    sections.forEach(function (sec) {
+      var inSec = cities.filter(function (c) { return byCity[c][0].section === sec; });
+      if (!inSec.length) return;
+      root.appendChild(el("h2", { text: sec }));
+      var grid = el("div", { class: "citygrid" });
+      inSec.forEach(function (c) {
+        var srcs = byCity[c];
+        var mine = DATA.meetings.filter(function (m) { return m.city === c; });
+        var upcoming = mine.filter(isUpcoming).sort(function (a, b) { return (a.date || "9999") < (b.date || "9999") ? -1 : 1; });
+        if (upcoming.length) withUpcoming++;
+        var mentions = mine.reduce(function (n, m) { return n + m.matches.length; }, 0);
+        var tags = [];
+        mine.forEach(function (m) { (m.tags || []).forEach(function (t) { var v = t.split(":").slice(1).join(":"); if (tags.indexOf(v) < 0) tags.push(v); }); });
+        var bad = srcs.filter(function (s) { return s.error; }), stale = srcs.filter(function (s) { return s.stale; });
+        var lastNew = srcs.map(function (s) { return s.last_new; }).filter(Boolean).sort().pop();
+        var lead = srcs.filter(function (s) { return s.lead_days != null && s.lead_samples >= 3; })[0];
+        var platforms = srcs.map(function (s) { return s.platform; }).filter(function (v, i, a) { return a.indexOf(v) === i; });
+        var status = bad.length === srcs.length
+          ? el("span", { class: "status-bad", text: "couldn’t be read in the last run" })
+          : stale.length ? el("span", { class: "status-bad", text: "no new agendas lately" })
+          : el("span", { class: "status-ok", text: "checked daily" });
+        var pages = srcs.filter(function (s) { return s.agenda_page; }).map(function (s) {
+          return el("a", { href: s.agenda_page, rel: "noopener", text: srcs.length > 1 ? s.name + " agendas" : "Agenda page" });
+        });
+        var parts = [
+          el("h3", { text: c }),
+          el("p", { class: "row" }, [platforms.join(", ") + " · ", status]),
+          el("div", { class: "links" }, pages),
+          el("p", { class: "row" }, mine.length
+            ? [el("strong", { text: plural(mine.length, "meeting") }), " with transit items (" + upcoming.length + " upcoming) · " + plural(mentions, "mention")]
+            : ["No transit items in the report window"])
+        ];
+        if (upcoming.length) {
+          var nx = upcoming[0];
+          var go = el("button", { type: "button", class: "linkbtn", text: fmtDay(nx.date) + " · " + nx.body });
+          go.addEventListener("click", function () { showCity(c, nx.id); });
+          parts.push(el("p", { class: "row" }, ["Next: ", go, nx.date ? " (" + relDay(nx.date) + ")" : ""]));
+        }
+        if (tags.length) parts.push(el("p", { class: "row", text: "Mentions: " + tags.join(" · ") }));
+        var health = [];
+        if (lastNew) health.push("last new agenda " + fmtDay(lastNew));
+        if (lead) {
+          var ld = Math.round(lead.lead_days);
+          health.push(ld <= 0 ? "usually posted on or after the meeting day" : "usually posted " + plural(ld, "day") + " ahead");
+        }
+        if (health.length) parts.push(el("p", { class: "row", text: health.join(" · ").replace(/^./, function (ch) { return ch.toUpperCase(); }) }));
+        var f = feedOf[c];
+        if (f) {
+          var fl = [];
+          if (f.google) fl.push(el("a", { href: f.google, rel: "noopener", text: "Google Calendar" }));
+          fl.push(el("a", { href: f.ics, text: ".ics" }), el("a", { href: f.atom, text: "RSS" }));
+          parts.push(el("div", { class: "links" }, ["Subscribe: "].concat(fl)));
+        }
+        if (mine.length) {
+          var all = el("button", { type: "button", class: "navbtn", text: "Show meetings" });
+          all.addEventListener("click", function () { showCity(c); });
+          parts.push(el("div", { class: "actions" }, [all]));
+        }
+        grid.appendChild(el("section", { class: "city", id: "city-" + c.toLowerCase().replace(/[^a-z0-9]+/g, "-") }, parts));
+      });
+      root.appendChild(grid);
+    });
+    if (!cities.length) root.appendChild(el("div", { class: "empty", text: "No cities or agencies match “" + fQ.value.trim() + "”." }));
+    document.getElementById("summary").textContent = plural(cities.length, "city or agency", "cities and agencies") +
+      " · " + withUpcoming + " with upcoming transit items";
+  }
   function renderList(root, items) {
     var nHits = countHits(items);
     document.getElementById("summary").textContent = plural(items.length, "meeting") + " · " + plural(nHits, "mention");

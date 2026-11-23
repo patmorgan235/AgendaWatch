@@ -386,3 +386,29 @@ def test_link_page_url_rewrite():
                          url_rewrite=["/DownloadFile/", "/DownloadFileBytes/"])
     [d] = src.list_documents(START, END)
     assert "/DownloadFileBytes/CC_5760_Agenda_12_1_2026.pdf" in d.url and d.meeting_date == date(2026, 12, 1)
+
+
+def test_agenda_page_links_for_people():
+    from agendawatch.sources import build_sources
+
+    class H:
+        def set_browser_host(self, host): pass
+        def set_host_headers(self, host, headers): pass
+
+    specs = [
+        {"name": "A", "type": "legistar", "client": "plano"},
+        {"name": "B", "type": "civicclerk", "tenant": "rowletttx"},
+        {"name": "C", "type": "civicweb", "base_url": "https://murphytx.civicweb.net/"},
+        {"name": "D", "type": "docspublished", "org": "fortworthtexas"},
+        {"name": "E", "type": "link_page", "urls": ["https://x.example/a?m={month}", "https://x.example/list"]},
+        {"name": "F", "type": "link_page", "urls": ["https://x.example/agendas-{year}"]},
+        {"name": "G", "type": "legistar", "client": "plano", "agenda_page": "https://plano.gov/agendas"},
+    ]
+    pages = {s.name: s.page_url() for s in build_sources(specs, H())}
+    assert pages["A"] == "https://plano.legistar.com/Calendar.aspx"
+    assert pages["B"] == "https://rowletttx.portal.civicclerk.com/"
+    assert pages["C"] == "https://murphytx.civicweb.net/Portal/MeetingTypeList.aspx"
+    assert pages["D"] == "https://docspublished.io/fortworthtexas"
+    assert pages["E"] == "https://x.example/list"                 # skips the templated URL
+    assert pages["F"].startswith("https://x.example/agendas-20")   # fills in the year
+    assert pages["G"] == "https://plano.gov/agendas"              # config override wins

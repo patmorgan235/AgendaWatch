@@ -71,9 +71,28 @@ class Source:
     section: str = ""                # report section, e.g. "DCTA member cities"
     note: str = ""                   # shown in the report's Sources table (e.g. "fallback: posts late")
     stale_after_days: int | None = None   # overrides settings.stale_after_days for this source
+    agenda_page: str = ""            # the page people use to find agendas; derived from the source if empty
 
     def list_documents(self, start: date, end: date) -> list[Document]:  # pragma: no cover
         raise NotImplementedError
+
+    def page_url(self) -> str:
+        """Link for people: the city's own agenda page (not the API this source reads)."""
+        return self.agenda_page or self._default_page()
+
+    def _default_page(self) -> str:
+        return ""
+
+
+def _first_page(urls: list[str]) -> str:
+    """The first configured URL, preferring one without {month}/{year} placeholders."""
+    plain = [u for u in urls if "{" not in u]
+    if plain:
+        return plain[0]
+    if urls:
+        today = date.today()
+        return urls[0].format(year=today.year, month=today.month)
+    return ""
 
 
 # ---------------------------------------------------------------- Legistar
@@ -83,6 +102,9 @@ class LegistarSource(Source):
     attachments: str = "none"        # none | names | download
     max_attachments: int = 25
     platform: str = "Legistar"
+
+    def _default_page(self) -> str:
+        return f"https://{self.client}.legistar.com/Calendar.aspx"
     api_base: str = "https://webapi.legistar.com/v1"
 
     def list_documents(self, start: date, end: date) -> list[Document]:
@@ -176,6 +198,9 @@ class NovusSource(Source):
     base_url: str = ""
     platform: str = "NovusAGENDA"
 
+    def _default_page(self) -> str:
+        return self.base_url
+
     _LABELS = {"online agenda", "agenda pdf", "meeting location", "view agenda html", "download agenda"}
 
     def list_documents(self, start: date, end: date) -> list[Document]:
@@ -233,6 +258,9 @@ class LinkPageSource(Source):
     months_back: int = 1
     max_links: int = 60
     platform: str = "web page"
+
+    def _default_page(self) -> str:
+        return _first_page(self.urls)
 
     def _expand(self) -> list[str]:
         out = []
@@ -351,6 +379,9 @@ class CivicClerkSource(Source):
     max_pages: int = 10
     platform: str = "CivicClerk"
 
+    def _default_page(self) -> str:
+        return f"https://{self.tenant}.portal.civicclerk.com/"
+
     def list_documents(self, start: date, end: date) -> list[Document]:
         api = f"https://{self.tenant}.api.civicclerk.com/v1"
         portal = f"https://{self.tenant}.portal.civicclerk.com"
@@ -428,6 +459,9 @@ class DocsPublishedSource(Source):
     attempts: int = 3                # the API drops connections now and then
     platform: str = "Docs Published"
 
+    def _default_page(self) -> str:
+        return f"{self.site_base}/{self.org}"
+
     def _get(self, path: str):
         last: Exception | None = None
         for i in range(self.attempts):
@@ -496,6 +530,9 @@ class GranicusSource(Source):
     url: str = ""
     platform: str = "Granicus"
 
+    def _default_page(self) -> str:
+        return self.url
+
     _AGENDA = re.compile(r"AgendaViewer\.php\?[^\"'\s>]*", re.I)
 
     def list_documents(self, start: date, end: date) -> list[Document]:
@@ -537,6 +574,9 @@ class CivicWebSource(Source):
     agendas_folder: str = "Agendas"
     format: str = "html"            # html | pdf | both
     platform: str = "CivicWeb"
+
+    def _default_page(self) -> str:
+        return f"{self.base_url.rstrip('/')}/Portal/MeetingTypeList.aspx"
 
     _LINK = re.compile(r'<a[^>]+href="(/filepro/documents/\d+|/document/\d+)[^"]*"[^>]*>(.*?)</a>', re.S | re.I)
     _NAME = re.compile(r"^(?P<body>.+?)\s*-\s*(?P<date>[^-]*?\d{4})\s*-\s*Agenda\s*-\s*(?P<fmt>Html|Pdf)\s*$", re.I)
@@ -599,6 +639,9 @@ class DocTableSource(Source):
     link_pattern: str = r"."
     skip_pattern: str = r"\b(cancel+ed|no meeting)\b"
     platform: str = "document table"
+
+    def _default_page(self) -> str:
+        return _first_page(self.urls)
 
     def _parse(self, page_url: str, html: str, start: date, end: date, href_re, skip_re) -> list[Document]:
         soup = BeautifulSoup(html, "html.parser")
@@ -673,6 +716,7 @@ def build_sources(specs: list[dict], http: Http) -> list[Source]:
         section = str(spec.pop("section", "") or "")
         note = str(spec.pop("note", "") or "")
         stale = spec.pop("stale_after_days", None)
+        agenda_page = str(spec.pop("agenda_page", "") or "")
         user_agent = spec.pop("user_agent", None)
         if user_agent:
             hosts = {urlparse(u).netloc for u in spec.get("urls", []) + [spec.get("base_url") or ""]}
@@ -682,7 +726,7 @@ def build_sources(specs: list[dict], http: Http) -> list[Source]:
                 else:
                     http.set_host_headers(host, {"User-Agent": str(user_agent)})
         common = dict(name=name, city=city, http=http, bodies=bodies, section=section, note=note,
-                      stale_after_days=int(stale) if stale is not None else None)
+                      stale_after_days=int(stale) if stale is not None else None, agenda_page=agenda_page)
         if kind == "legistar":
             sources.append(LegistarSource(**common, **spec))
         elif kind == "novus":
