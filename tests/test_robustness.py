@@ -55,12 +55,76 @@ def test_unexpected_error_in_one_document_is_contained(tmp_path, monkeypatch):
     st = by_name(res)
     assert st["Dallas"].failed == 1 and any("RuntimeError: boom" in n for n in st["Dallas"].notes)
     assert st["Plano"].new_matches == 1
+    # Counted as failed only, so the counts still add up to what was listed.
+    d = st["Dallas"]
+    assert d.read + d.unchanged + d.skipped + d.failed == d.listed
 
 
-def test_html_labelled_pdf_is_read_as_html():
-    pages, note = extract_pages(b"<!DOCTYPE html><html><body>Downloading, please wait</body></html>",
-                                "application/pdf")
-    assert note == "HTML page" and "please wait" in pages[0]
+def test_matches_are_not_lost_when_storing_them_fails(tmp_path, monkeypatch):
+    cfg = config(tmp_path)
+    pdf = make_pdf([AGENDA_P1, AGENDA_P2])
+    r = routes(pdf)
+    r[DALLAS_AGENDA] = Resp(pdf, etag='"v1"')
+    real = runner.find_hits
+
+    def failing(pages, terms, **kw):
+        if any("Dallas Area Rapid Transit" in p for p in pages):
+            raise RuntimeError("boom")
+        return real(pages, terms, **kw)
+
+    monkeypatch.setattr(runner, "find_hits", failing)
+    runner.run(cfg, http=FakeHttp(r), today=TODAY)
+    monkeypatch.setattr(runner, "find_hits", real)
+
+    # The file hasn't changed, but it's downloaded in full and read again, and its matches recorded.
+    http = FakeHttp(r)
+    res = runner.run(cfg, http=http, today=TODAY)
+    assert DALLAS_AGENDA not in http.conditional
+    assert any(m["url"] == DALLAS_AGENDA for m in res.new_matches)
+
+
+def test_partial_document_write_is_rolled_back(tmp_path, monkeypatch):
+    cfg = config(tmp_path)
+    real = runner.extract_pages
+
+    def extract(data, ctype, ocr="auto"):
+        pages, note = real(data, ctype, ocr=ocr)
+        if any("Dallas Area Rapid Transit" in p for p in pages):
+            pages = pages + ["lone surrogate " + chr(0xD800)]   # sqlite can't encode this
+        return pages, note
+
+    monkeypatch.setattr(runner, "extract_pages", extract)
+    res = runner.run(cfg, http=FakeHttp(routes(make_pdf([AGENDA_P1, AGENDA_P2]))), today=TODAY)
+    assert by_name(res)["Dallas"].failed == 1
+    store = Store(cfg["settings"]["database"])
+    try:
+        row = store.get_document(DALLAS_AGENDA)
+        pages = store.db.execute("SELECT COUNT(*) FROM pages WHERE url=?", (DALLAS_AGENDA,)).fetchone()[0]
+        assert row["status"] == "error" and row["sha256"] is None and pages == 0
+    finally:
+        store.close()
+
+
+def test_the_same_error_everywhere_is_raised(tmp_path, monkeypatch):
+    def broken(*a, **kw):
+        raise AttributeError("'FakeHttp' object has no attribute 'fetch'")
+
+    monkeypatch.setattr(runner, "find_hits", broken)
+    with pytest.raises(RuntimeError, match="AttributeError") as info:
+        runner.run(config(tmp_path), http=FakeHttp(routes(make_pdf([AGENDA_P1]))), today=TODAY)
+    assert isinstance(info.value.__cause__, AttributeError)
+
+
+@pytest.mark.parametrize("body", [
+    b"<!DOCTYPE html><html><body>Downloading, please wait</body></html>",
+    b"\xef\xbb\xbf<!DOCTYPE html><html><body>Downloading, please wait</body></html>",
+    b"<head><title>Wait</title></head>Downloading, please wait",
+    b"<?xml version='1.0'?><html>Downloading, please wait</html>",
+    b"<!-- " + b"x" * 2000 + b" --><p>Downloading, please wait</p>",
+])
+def test_html_labelled_pdf_is_not_read_as_pdf(body):
+    pages, note = extract_pages(body, "application/pdf")
+    assert "please wait" in pages[0]
 
 
 def run_ok(cfg, r):
@@ -107,6 +171,29 @@ def test_last_modified_is_used_without_etag(tmp_path):
     res = runner.run(cfg, http=again, today=TODAY)
     assert again.conditional[DALLAS_AGENDA] == (None, stamp)
     assert by_name(res)["Dallas"].unchanged == 2 and res.new_matches == []
+
+
+def test_validators_refreshed_on_304_are_kept(tmp_path):
+    cfg = config(tmp_path)
+    pdf = make_pdf([AGENDA_P2])
+    r = routes(pdf)
+    r[DALLAS_AGENDA] = Resp(pdf, etag='"v1"', last_modified="Mon")
+    runner.run(cfg, http=FakeHttp(r), today=TODAY)
+
+    class Rotating(FakeHttp):   # answers 304 with a refreshed Last-Modified and no ETag
+        def fetch(self, url, etag=None, last_modified=None):
+            d = super().fetch(url, etag, last_modified)
+            if d.not_modified:
+                d.etag, d.last_modified = None, "Tue"
+            return d
+
+    runner.run(cfg, http=Rotating(r), today=TODAY)
+    store = Store(cfg["settings"]["database"])
+    try:
+        row = store.get_document(DALLAS_AGENDA)
+        assert (row["etag"], row["last_modified"]) == ('"v1"', "Tue")
+    finally:
+        store.close()
 
 
 def test_old_database_gets_new_columns(tmp_path):

@@ -91,7 +91,10 @@ def _process(doc: Document, store: Store, http: Http, terms, settings: dict, run
                             last_modified=existing["last_modified"] if read_before else None)
             if dl.not_modified:
                 st.unchanged += 1
-                store.save_document(doc, None, None, "ok", existing["note"] or "")
+                # Servers may refresh validators on a 304; keep ours for any they don't resend.
+                store.save_document(doc, None, None, "ok", existing["note"] or "",
+                                    validators=(dl.etag or existing["etag"],
+                                                dl.last_modified or existing["last_modified"]))
                 return
             data, ctype, validators = dl.body, dl.content_type, (dl.etag, dl.last_modified)
     except FetchError as exc:
@@ -117,7 +120,6 @@ def _process(doc: Document, store: Store, http: Http, terms, settings: dict, run
         log.warning("  ! %s: %s", doc.title, msg)
         return
     store.save_document(doc, sha, pages, "ok", note, validators=validators)
-    st.read += 1
     if note and "scanned" in note:
         st.notes.append(f"{doc.title} ({doc.meeting_date}): {note}")
     elif doc.inline_text is None and sum(len(p) for p in pages) < 200:
@@ -132,9 +134,26 @@ def _process(doc: Document, store: Store, http: Http, terms, settings: dict, run
     )
     scope = f"{doc.city}|{doc.meeting_date}"
     new = store.add_hits(doc.url, hits, run_id, scope)
+    st.read += 1   # counted here so a failure above counts as failed only
     st.new_matches += new
     if new:
         log.info("  + %d new match(es) in %s %s (%s)", new, doc.city, doc.title, doc.meeting_date)
+
+
+def _contain(exc: Exception, doc: Document, store: Store, st: SourceStatus) -> None:
+    """Record an unexpected per-document failure so the document is downloaded and read again next run."""
+    st.failed += 1
+    msg = f"{type(exc).__name__}: {exc}"
+    st.notes.append(f"{doc.title} ({doc.meeting_date}): {msg}")
+    log.exception("  ! %s: unexpected error", doc.title)
+    # The document may already be saved as read (sha and validators stored) before its matches were;
+    # left that way, the next run would see it as unchanged and never record them.
+    store.db.rollback()
+    try:
+        store.save_document(doc, None, None, "error", msg)
+    except Exception:  # noqa: BLE001 - don't let the bookkeeping hide the original error
+        store.db.rollback()
+        log.exception("  ! %s: couldn't record the error", doc.title)
 
 
 def _apply_health(statuses: list[SourceStatus], health: dict, today: date, default_stale: int) -> None:
@@ -176,6 +195,8 @@ def run(config: dict, backfill_days: int | None = None, http: Http | None = None
 
     run_id = store.start_run()
     statuses: list[SourceStatus] = []
+    attempted = 0
+    unexpected: list[Exception] = []
     try:
         for src in sources:
             st = SourceStatus(src.name, src.city, src.platform, section=src.section,
@@ -195,12 +216,16 @@ def run(config: dict, backfill_days: int | None = None, http: Http | None = None
             st.listed = len(docs)
             log.info("  %d agenda(s) in window", len(docs))
             for doc in docs:
+                attempted += 1
                 try:
                     _process(doc, store, http, terms, settings, run_id, st, today)
                 except Exception as exc:  # noqa: BLE001 - one bad agenda shouldn't stop the others
-                    st.failed += 1
-                    st.notes.append(f"{doc.title} ({doc.meeting_date}): {type(exc).__name__}: {exc}")
-                    log.exception("  ! %s: unexpected error", doc.title)
+                    unexpected.append(exc)
+                    _contain(exc, doc, store, st)
+        if attempted and len(unexpected) == attempted and len({type(e) for e in unexpected}) == 1:
+            # Every agenda of every source failed the same way: almost certainly a bug, not bad data.
+            first = unexpected[0]
+            raise RuntimeError(f"all {attempted} agenda(s) failed with {type(first).__name__}: {first}") from first
         store.finish_run(run_id)
         for st in statuses:
             store.record_source_run(run_id, st)

@@ -101,44 +101,44 @@ class Store:
         mdate = doc.meeting_date.isoformat() if doc.meeting_date else None
         n_pages = len(pages) if pages is not None else (existing["pages"] if existing else None)
         chars = sum(len(p) for p in pages) if pages is not None else (existing["chars"] if existing else None)
-        self.db.execute(
-            """INSERT INTO documents (url, source, city, body, meeting_date, title, kind, detail_url,
-                   sha256, pages, chars, status, note, first_seen, last_checked)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-               ON CONFLICT(url) DO UPDATE SET
-                   source=excluded.source, city=excluded.city, body=excluded.body,
-                   meeting_date=excluded.meeting_date, title=excluded.title, kind=excluded.kind,
-                   detail_url=excluded.detail_url,
-                   sha256=COALESCE(excluded.sha256, documents.sha256),
-                   pages=excluded.pages, chars=excluded.chars,
-                   status=excluded.status, note=excluded.note, last_checked=excluded.last_checked""",
-            (doc.url, doc.source, doc.city, doc.body, mdate, doc.title, doc.kind, doc.detail_url,
-             sha, n_pages, chars, status, note, now, now),
-        )
-        if validators is not None:
-            self.db.execute("UPDATE documents SET etag=?, last_modified=? WHERE url=?", (*validators, doc.url))
-        if pages is not None:
-            self.db.execute("DELETE FROM pages WHERE url=?", (doc.url,))
-            self.db.executemany(
-                "INSERT INTO pages (url, page, text) VALUES (?,?,?)",
-                [(doc.url, i, t) for i, t in enumerate(pages, start=1)],
+        with self.db:  # one transaction: commits on success, rolls back on error (no half-saved document)
+            self.db.execute(
+                """INSERT INTO documents (url, source, city, body, meeting_date, title, kind, detail_url,
+                       sha256, pages, chars, status, note, first_seen, last_checked)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                   ON CONFLICT(url) DO UPDATE SET
+                       source=excluded.source, city=excluded.city, body=excluded.body,
+                       meeting_date=excluded.meeting_date, title=excluded.title, kind=excluded.kind,
+                       detail_url=excluded.detail_url,
+                       sha256=COALESCE(excluded.sha256, documents.sha256),
+                       pages=excluded.pages, chars=excluded.chars,
+                       status=excluded.status, note=excluded.note, last_checked=excluded.last_checked""",
+                (doc.url, doc.source, doc.city, doc.body, mdate, doc.title, doc.kind, doc.detail_url,
+                 sha, n_pages, chars, status, note, now, now),
             )
-        self.db.commit()
+            if validators is not None:
+                self.db.execute("UPDATE documents SET etag=?, last_modified=? WHERE url=?", (*validators, doc.url))
+            if pages is not None:
+                self.db.execute("DELETE FROM pages WHERE url=?", (doc.url,))
+                self.db.executemany(
+                    "INSERT INTO pages (url, page, text) VALUES (?,?,?)",
+                    [(doc.url, i, t) for i, t in enumerate(pages, start=1)],
+                )
 
     # matches
     def add_hits(self, url: str, hits, run_id: int, scope: str) -> int:
         """Insert hits; return how many were new. `scope` (city|date) keeps keys unique per meeting."""
         new = 0
         now = self.now()
-        for h in hits:
-            key = f"{scope}|{h.key}"
-            cur = self.db.execute(
-                """INSERT OR IGNORE INTO matches (key, url, term, page, before, hit, after, run_id, first_seen)
-                   VALUES (?,?,?,?,?,?,?,?,?)""",
-                (key, url, h.term, h.page, h.before, h.hit, h.after, run_id, now),
-            )
-            new += cur.rowcount
-        self.db.commit()
+        with self.db:  # all or nothing, like save_document
+            for h in hits:
+                key = f"{scope}|{h.key}"
+                cur = self.db.execute(
+                    """INSERT OR IGNORE INTO matches (key, url, term, page, before, hit, after, run_id, first_seen)
+                       VALUES (?,?,?,?,?,?,?,?,?)""",
+                    (key, url, h.term, h.page, h.before, h.hit, h.after, run_id, now),
+                )
+                new += cur.rowcount
         return new
 
     def matches_for_run(self, run_id: int) -> list[sqlite3.Row]:

@@ -108,11 +108,11 @@ def looks_scanned(pages: list[str]) -> bool:
 
 def extract_pages(data: bytes, content_type: str = "", ocr: str = "auto") -> tuple[list[str], str]:
     """Return (pages, note). Note explains anything unusual, e.g. a scanned PDF."""
-    head = data[:1024].lstrip().lower()
-    looks_html = head.startswith((b"<!doctype", b"<html")) or b"<body" in head
-    # Trust the bytes over the Content-Type: some sites answer a PDF link with an HTML error or
-    # "please wait" page still labelled application/pdf.
-    if data.lstrip()[:5] == b"%PDF-" or ("pdf" in content_type and not looks_html):
+    head = data[:1024].removeprefix(b"\xef\xbb\xbf").lstrip().lower()   # skip a UTF-8 BOM
+    looks_html = head.startswith((b"<!doctype", b"<html", b"<head", b"<?xml", b"<!--")) or b"<body" in head
+    # Trust the bytes, never the Content-Type: some sites answer a PDF link with an HTML error or
+    # "please wait" page still labelled application/pdf. Real PDFs have the header in the first 1 KB.
+    if b"%PDF-" in data[:1024]:
         pages = _pdf_pages(data)
         if looks_scanned(pages):
             if ocr != "off":
