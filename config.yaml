@@ -83,6 +83,13 @@ terms:
     pattern: 'high[\s\-]speed\s+(?:rail|train)'
     regex: true
     tags: [mode:rail, topic:intercity rail]
+  - name: Amtrak
+    aliases: [Heartland Flyer, Texas Eagle]   # Amtrak's routes through DFW
+    tags: [mode:rail, topic:intercity rail]
+  - name: Passenger rail
+    pattern: 'passenger\s+(?:rail|trains?)'
+    regex: true
+    tags: [mode:rail, topic:intercity rail]
   - name: Streetcar
     pattern: 'street[\s\-]?cars?'   # street car, streetcar, street-car, streetcars
     regex: true
