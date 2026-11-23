@@ -82,7 +82,7 @@ Cities that could join DART (they border a DART member city), Trinity Metro (the
 
 Not read yet: Grand Prairie, The Colony, Burleson and Prosper post through Municode Meetings, which refuses the tool (Cloudflare challenge / dropped connections); Allen and Saginaw use an AgendaLink portal whose API needs a token embedded in the app; Arlington's agenda list is loaded by script; Rockwall's and Corinth's sites didn't respond.
 
-Terms (27), each tagged by **agency**, **mode** and **topic**: the agencies and providers (DART, DCTA, Trinity Metro, STAR Transit, SPAN, Collin County Transit, the M-Line trolley); rail (Silver Line/Cotton Belt, TEXRail, TRE, light rail, the D2 subway, high-speed rail, streetcar); bus (bus rapid transit, bus stops and shelters, park-and-ride); on-demand and paratransit (GoLink, microtransit, on-demand transit, paratransit); and policy (GMP, General Mobility Program, DART membership and withdrawal, transit-oriented development, Complete Streets, bicycle and pedestrian), plus the broad "Transit".
+Terms (29), each tagged by **agency**, **mode** and **topic**: the agencies and providers (DART, DCTA, Trinity Metro, STAR Transit, SPAN, Collin County Transit, the M-Line trolley); rail (Silver Line/Cotton Belt, TEXRail, TRE, light rail, the D2 subway, high-speed rail, Amtrak, passenger rail, streetcar); bus (bus rapid transit, bus stops and shelters, park-and-ride); on-demand and paratransit (GoLink, microtransit, on-demand transit, paratransit); and policy (GMP, General Mobility Program, DART membership and withdrawal, transit-oriented development, Complete Streets, bicycle and pedestrian), plus the broad "Transit".
 
 ## Setup (once)
 
