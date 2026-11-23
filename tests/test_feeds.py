@@ -60,10 +60,62 @@ def test_google_add_link_without_site_url(tmp_path):
     assert q["details"][0].startswith("Agenda mentions:")   # no site link to lead with
 
 
+def test_section_and_city_feeds(tmp_path):
+    import xml.etree.ElementTree as ET
+
+    site, data = build_site(tmp_path)
+    feeds = {(f["kind"], f["name"]): f for f in data["feeds"]}
+    # every configured source's city and section, including Addison, whose site failed (no meetings)
+    assert set(feeds) == {("section", "DART member cities"), ("section", "DCTA member cities"),
+                          ("city", "Dallas"), ("city", "Plano"), ("city", "Addison")}
+    assert feeds[("city", "Dallas")]["ics"] == "feeds/city/dallas.ics"
+    assert feeds[("section", "DART member cities")]["atom"] == "feeds/section/dart-member-cities.xml"
+
+    ns = {"a": "http://www.w3.org/2005/Atom"}
+    for f in data["feeds"]:
+        ics = (site / f["ics"]).read_text(encoding="utf-8")
+        assert ics.startswith("BEGIN:VCALENDAR") and "REFRESH-INTERVAL;VALUE=DURATION:PT12H" in ics
+        assert all(len(line.encode()) <= 75 for line in ics.split("\n"))
+        atom = ET.fromstring((site / f["atom"]).read_text(encoding="utf-8"))
+        assert atom.find("a:link[@rel='self']", ns).get("href") == f"{SITE}/{f['atom']}"
+        assert f["google"].startswith("https://calendar.google.com/calendar/r?cid=webcal%3A%2F%2F")
+
+    addison = (site / feeds[("city", "Addison")]["ics"]).read_bytes().decode("utf-8")
+    assert "BEGIN:VEVENT" not in addison and addison.endswith("END:VCALENDAR\r\n")   # empty but valid
+    dallas = (site / feeds[("city", "Dallas")]["ics"]).read_text(encoding="utf-8")
+    plano = (site / feeds[("city", "Plano")]["ics"]).read_text(encoding="utf-8")
+    assert "SUMMARY:Dallas:" in dallas and "Plano" not in dallas.split("BEGIN:VEVENT", 1)[1]
+    assert "SUMMARY:Plano:" in plano and "LAST-MODIFIED:" in plano
+    dart = ET.fromstring((site / feeds[("section", "DART member cities")]["atom"]).read_text(encoding="utf-8"))
+    titles = [e.find("a:title", ns).text for e in dart.findall("a:entry", ns)]
+    assert titles and all(t.startswith("Dallas") for t in titles)
+    assert dart.find("a:link[@rel='alternate']", ns).get("href") == f"{SITE}/?section=DART+member+cities"
+    # feed ids are unique per feed
+    ids = {ET.fromstring((site / f["atom"]).read_text(encoding="utf-8")).find("a:id", ns).text for f in data["feeds"]}
+    assert len(ids) == len(data["feeds"])
+
+
+def test_feeds_without_site_url_have_no_google_link(tmp_path):
+    _, data = build_site(tmp_path, site_url=None)
+    assert data["feeds"] and not any("google" in f for f in data["feeds"])
+
+
+def test_slug_collisions_get_a_suffix():
+    from types import SimpleNamespace
+
+    from agendawatch.site import feed_list
+
+    res = SimpleNamespace(statuses=[SimpleNamespace(section="A", city="St. Paul"),
+                                    SimpleNamespace(section="A", city="St Paul")])
+    cities = [f["ics"] for f in feed_list(res, None) if f["kind"] == "city"]
+    assert cities == ["feeds/city/st-paul.ics", "feeds/city/st-paul-2.ics"]
+
+
 def test_page_has_calendar_view(tmp_path):
     site, data = build_site(tmp_path)
     html = (site / "index.html").read_text(encoding="utf-8")
-    for needle in ('id="v-list"', 'id="v-cal"', "function renderCalendar", 'id: "day-panel"', "Add to calendar"):
+    for needle in ('id="v-list"', 'id="v-cal"', "function renderCalendar", 'id: "day-panel"', "Add to calendar",
+                   'id="subscribe-wrap"', "function renderFeeds"):
         assert needle in html, needle
     embedded = html.split('<script id="data" type="application/json">')[1].split("</script>")[0]
     assert json.loads(embedded)["meetings"][0]["add"] == data["meetings"][0]["add"]

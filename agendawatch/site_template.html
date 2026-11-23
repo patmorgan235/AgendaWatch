@@ -51,6 +51,8 @@ th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);verti
 th{color:var(--muted);font-weight:600;font-size:.78rem;text-transform:uppercase;letter-spacing:.04em}
 .err{color:var(--warn)}
 tr.flag td{background:var(--newbg)}
+tr.pick td{background:var(--chip)}
+.feedlinks a{margin-right:12px;white-space:nowrap}
 .note{color:var(--muted);font-size:.82rem}
 footer{margin-top:36px;color:var(--muted);font-size:.85rem}
 footer p{margin:4px 0}
@@ -110,6 +112,13 @@ footer p{margin:4px 0}
 
 <main id="results"></main>
 
+<details id="subscribe-wrap">
+  <summary>Subscribe to a city or section</summary>
+  <p class="note">Each calendar holds the meetings whose agendas mention a watched term, and fills in as agendas are found.
+  Calendar apps check for updates on their own schedule: Google Calendar every several hours.</p>
+  <div class="tablewrap"><table id="feeds"><thead><tr><th>Calendar</th><th>Type</th><th>Subscribe</th></tr></thead><tbody></tbody></table></div>
+</details>
+
 <details id="sources-wrap">
   <summary>Sources checked in the last run</summary>
   <p class="note">Notice = median days between an agenda first appearing and its meeting (recent meetings only).
@@ -119,7 +128,7 @@ footer p{margin:4px 0}
 </details>
 
 <footer>
-  <p>Subscribe: <a href="feed.xml">new mentions (Atom/RSS)</a> · <a href="upcoming.ics">upcoming meetings (calendar)</a> · <a href="data.json">data (JSON)</a> · <a href="#sources" id="sources-link">source health</a></p>
+  <p>Subscribe: <a href="feed.xml">new mentions (Atom/RSS)</a> · <a href="upcoming.ics">upcoming meetings (calendar)</a> · <a href="#subscribe-wrap" id="subscribe-link">calendars by city</a> ·<a href="data.json">data (JSON)</a> · <a href="#sources" id="sources-link">source health</a></p>
   <p>Agenda Watch searches publicly posted agendas automatically. Snippets can miss context and agendas change — always confirm against the official posted agenda linked on each meeting.</p>
   <p id="foot-run"></p>
 </footer>
@@ -350,8 +359,33 @@ footer p{margin:4px 0}
     var root = document.getElementById("results");
     root.textContent = "";
     if (cal) renderCalendar(root, items); else renderList(root, items);
+    renderFeeds();
     writeQuery();
   }
+
+  // ---- subscribe: per-section and per-city calendars ------------------------
+  var feedWrap = document.getElementById("subscribe-wrap");
+  if (!(DATA.feeds && DATA.feeds.length)) feedWrap.hidden = true;
+  function renderFeeds() {
+    if (feedWrap.hidden) return;
+    function picked(f) { return f.kind === "city" ? f.name === fCity.value : f.name === fSec.value; }
+    // the feed for the current city/section filter first, then sections, then cities A–Z
+    var feeds = DATA.feeds.slice().sort(function (a, b) {
+      return (picked(b) - picked(a)) || (a.kind === b.kind ? 0 : a.kind === "section" ? -1 : 1) ||
+        (a.kind === "city" ? a.name.localeCompare(b.name) : 0);
+    });
+    var tbody = document.querySelector("#feeds tbody");
+    tbody.textContent = "";
+    feeds.forEach(function (f) {
+      var links = [];
+      if (f.google) links.push(el("a", { href: f.google, target: "_blank", rel: "noopener", text: "Add to Google Calendar" }));
+      links.push(el("a", { href: f.ics, text: "Calendar (.ics)" }), el("a", { href: f.atom, text: "RSS" }));
+      tbody.appendChild(el("tr", picked(f) ? { class: "pick" } : null, [
+        el("td", { text: f.name }), el("td", { text: f.kind === "city" ? "City / county" : "Section" }),
+        el("td", { class: "feedlinks" }, links)]));
+    });
+  }
+  document.getElementById("subscribe-link").addEventListener("click", function () { feedWrap.open = true; });
   function renderList(root, items) {
     var nHits = countHits(items);
     document.getElementById("summary").textContent = plural(items.length, "meeting") + " · " + plural(nHits, "mention");

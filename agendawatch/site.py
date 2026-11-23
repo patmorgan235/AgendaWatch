@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shutil
 from collections import OrderedDict
 from datetime import date, datetime, timedelta, timezone
@@ -99,7 +100,54 @@ def build_data(res: RunResult, terms: list[str], site_url: str | None = None) ->
         "site_url": base,
         "meetings": out,
         "sources": sources,
+        "feeds": feed_list(res, base),
     }
+
+
+# ---------------------------------------------------------------- per-section / per-city feeds
+def _slug(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "feed"
+
+
+def feed_list(res: RunResult, base: str | None) -> list[dict]:
+    """A calendar and an Atom feed for every report section and every watched city.
+
+    Built from the configured sources, not from today's matches, so a feed exists (empty) even
+    when its city has no mentions right now and subscription links never break."""
+    groups = [
+        ("section", list(dict.fromkeys(s.section or OTHER for s in res.statuses))),
+        ("city", list(dict.fromkeys(s.city for s in res.statuses))),
+    ]
+    feeds, used = [], set()
+    for kind, names in groups:
+        for name in names:
+            slug, n = _slug(name), 2
+            while (kind, slug) in used:
+                slug, n = f"{_slug(name)}-{n}", n + 1
+            used.add((kind, slug))
+            path = f"feeds/{kind}/{slug}"
+            feed = {"kind": kind, "name": name, "slug": slug, "ics": f"{path}.ics", "atom": f"{path}.xml"}
+            if base:   # Google needs an absolute address to subscribe to
+                host_path = base.split("://", 1)[-1]
+                feed["google"] = "https://calendar.google.com/calendar/r?" + urlencode(
+                    {"cid": f"webcal://{host_path}/{path}.ics"})
+            feeds.append(feed)
+    return feeds
+
+
+def feed_meetings(data: dict, feed: dict) -> list[dict]:
+    key = "section" if feed["kind"] == "section" else "city"
+    return [m for m in data["meetings"] if m[key] == feed["name"]]
+
+
+def write_feeds(out: Path, data: dict) -> None:
+    for feed in data["feeds"]:
+        meetings = feed_meetings(data, feed)
+        _write_ics(out / feed["ics"], render_ics(data, meetings, name=f"Agenda Watch — {feed['name']}"))
+        (out / feed["atom"]).write_text(render_atom(
+            data, meetings=meetings, title=f"Agenda Watch — {feed['name']}: transit items",
+            self_path=feed["atom"], feed_id=f"feed:{feed['kind']}:{feed['slug']}",
+            page_query="?" + urlencode({feed["kind"]: feed["name"]})), encoding="utf-8")
 
 
 # ---------------------------------------------------------------- Atom feed
@@ -114,12 +162,14 @@ def _rfc3339(ts: str) -> str:
     return dt.isoformat(timespec="seconds")
 
 
-def render_atom(data: dict, limit: int = 150) -> str:
+def render_atom(data: dict, limit: int = 150, meetings: list[dict] | None = None,
+                title: str = "Agenda Watch — transit items on North Texas agendas",
+                self_path: str = "feed.xml", feed_id: str = "feed", page_query: str = "") -> str:
     """One entry per meeting per day it gained new matches, newest first."""
     base = data["site_url"]
     page_url = f"{base}/" if base else "index.html"
     entries = []
-    for m in data["meetings"]:
+    for m in data["meetings"] if meetings is None else meetings:
         by_day: "OrderedDict[str, list]" = OrderedDict()
         for x in sorted(m["matches"], key=lambda x: x["first_seen"]):
             by_day.setdefault(x["first_seen"][:10], []).append(x)
@@ -130,13 +180,13 @@ def render_atom(data: dict, limit: int = 150) -> str:
     out = [
         '<?xml version="1.0" encoding="utf-8"?>',
         '<feed xmlns="http://www.w3.org/2005/Atom">',
-        "<title>Agenda Watch — transit items on North Texas agendas</title>",
-        f"<id>{FEED_TAG}:feed</id>",
+        f"<title>{xml_escape(title)}</title>",
+        f"<id>{FEED_TAG}:{feed_id}</id>",
         f"<updated>{updated}</updated>",
-        f'<link rel="alternate" type="text/html" href="{xml_escape(page_url)}"/>',
+        f'<link rel="alternate" type="text/html" href="{xml_escape(page_url + page_query)}"/>',
     ]
     if base:
-        out.append(f'<link rel="self" type="application/atom+xml" href="{xml_escape(base)}/feed.xml"/>')
+        out.append(f'<link rel="self" type="application/atom+xml" href="{xml_escape(base)}/{xml_escape(self_path)}"/>')
     out.append("<author><name>Agenda Watch</name></author>")
     for ts, day, m, hits in entries[:limit]:
         when = m["date"] or "date unknown"
@@ -167,6 +217,11 @@ def render_atom(data: dict, limit: int = 150) -> str:
 def _ics_text(s: str) -> str:
     return (s.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,")
             .replace("\r\n", "\\n").replace("\n", "\\n"))
+
+
+def _ics_utc(ts: str) -> str:
+    """A stored timestamp (local time unless it says otherwise) as an iCalendar UTC time."""
+    return datetime.fromisoformat(_rfc3339(ts)).astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
 def _fold(line: str) -> list[str]:
@@ -225,7 +280,9 @@ def render_ics(data: dict, meetings: list[dict] | None = None, name: str = "Agen
     lines: list[str] = []
     for raw in ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Agenda Watch//North Texas transit agendas//EN",
                 "CALSCALE:GREGORIAN", "METHOD:PUBLISH", f"X-WR-CALNAME:{_ics_text(name)}",
-                "X-WR-TIMEZONE:America/Chicago"]:
+                "X-WR-TIMEZONE:America/Chicago",
+                # ask subscribing apps to check twice a day (the site updates daily)
+                "REFRESH-INTERVAL;VALUE=DURATION:PT12H", "X-PUBLISHED-TTL:PT12H"]:
         lines.extend(_fold(raw))
     for m in data["meetings"] if meetings is None else meetings:
         if not m["date"] or not (m["upcoming"] or include_past):
@@ -236,6 +293,7 @@ def render_ics(data: dict, meetings: list[dict] | None = None, name: str = "Agen
             "BEGIN:VEVENT",
             f"UID:{m['id']}@agendawatch",
             f"DTSTAMP:{stamp}",
+            f"LAST-MODIFIED:{_ics_utc(max(x['first_seen'] for x in m['matches']))}",
             f"DTSTART;VALUE=DATE:{d:%Y%m%d}",
             f"DTEND;VALUE=DATE:{d + timedelta(days=1):%Y%m%d}",
             f"SUMMARY:{_ics_text(summary)}",
@@ -274,6 +332,7 @@ def write_site(res: RunResult, terms: list[str], out_dir: str | Path, site_url: 
     (out / "data.json").write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
     (out / "feed.xml").write_text(render_atom(data), encoding="utf-8")
     _write_ics(out / "upcoming.ics", render_ics(data))
+    write_feeds(out, data)
     # One file per meeting, for "Add to calendar → .ics". Old meetings' files are left in place:
     # dated snapshot pages still link to them.
     for m in data["meetings"]:
