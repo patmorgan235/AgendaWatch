@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -10,7 +11,7 @@ from datetime import date, datetime, timedelta
 from . import feeds as feed_paths
 from .extract import extract_pages
 from .http import FetchError, Http
-from .matcher import compile_terms, find_hits
+from .matcher import MATCHER_VERSION, compile_terms, find_hits
 from .sources import Document, build_sources
 from .store import Store
 
@@ -159,6 +160,35 @@ def _contain(exc: Exception, doc: Document, store: Store, st: SourceStatus) -> N
         log.exception("  ! %s: couldn't record the error", doc.title)
 
 
+def terms_fingerprint(raw_terms: list) -> str:
+    """Changes whenever the term list or the matcher does (tags don't matter: they're applied at report time)."""
+    def strip(t):
+        return t if isinstance(t, str) else {k: v for k, v in t.items() if k != "tags"}
+    basis = json.dumps({"v": MATCHER_VERSION, "terms": [strip(t) for t in raw_terms]}, sort_keys=True, default=str)
+    return hashlib.sha1(basis.encode()).hexdigest()
+
+
+def rematch_stored(store: Store, terms, settings: dict, run_id: int, today: date) -> tuple[int, int, int]:
+    """Re-match every agenda whose text is still stored, after the term list or matcher changed.
+
+    Matches that no longer apply are removed (noise rules, overlaps). New matches on upcoming
+    meetings count as new in this run; on past meetings they're back-dated to when the agenda was
+    first seen, so feeds and "new since your last visit" aren't flooded with old meetings.
+    Returns (documents, matches added, matches removed)."""
+    docs = added = removed = 0
+    for row in store.documents_with_text():
+        hits, _ = find_hits(store.page_texts(row["url"]), terms,
+                            context=int(settings.get("snippet_chars", 140)),
+                            max_per_term=int(settings.get("max_snippets_per_term", 5)))
+        scope = f"{row['city']}|{row['meeting_date']}"
+        removed += store.drop_hits_except(row["url"], {f"{scope}|{h.key}" for h in hits})
+        past = bool(row["meeting_date"]) and row["meeting_date"] < today.isoformat()
+        added += store.add_hits(row["url"], hits, 0 if past else run_id, scope,
+                                first_seen=row["first_seen"] if past else None)
+        docs += 1
+    return docs, added, removed
+
+
 def _apply_health(statuses: list[SourceStatus], health: dict, today: date, default_stale: int) -> None:
     for st in statuses:
         h = health.get(st.name) or {}
@@ -197,6 +227,12 @@ def run(config: dict, backfill_days: int | None = None, http: Http | None = None
     report_start = min(start, today - timedelta(days=int(settings.get("report_lookback_days", 30))))
 
     run_id = store.start_run()
+    fingerprint = terms_fingerprint(config["terms"])
+    if store.get_meta("terms_fingerprint") != fingerprint:
+        docs, added, removed = rematch_stored(store, terms, settings, run_id, today)
+        store.set_meta("terms_fingerprint", fingerprint)
+        log.info("terms changed: re-matched %d stored agenda(s), %d match(es) added, %d removed", docs, added, removed,
+                 extra={"fields": {"event": "rematched", "documents": docs, "added": added, "removed": removed}})
     statuses: list[SourceStatus] = []
     attempted = 0
     unexpected: list[Exception] = []

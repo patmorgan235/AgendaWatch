@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shutil
 from collections import OrderedDict
 from datetime import date, datetime, timedelta, timezone
@@ -37,8 +38,29 @@ def section_order(res: RunResult) -> list[str]:
     return list(dict.fromkeys([s.section or OTHER for s in res.statuses] + [OTHER]))
 
 
-def build_data(res: RunResult, terms: list[str], site_url: str | None = None) -> dict:
+def taxonomy_from_config(cfg: dict) -> dict:
+    """Tags per term and the action-tag patterns, from config.yaml (`terms[].tags`, `actions`)."""
+    from .matcher import term_tags
+
+    return {"tags": term_tags(cfg.get("terms") or []), "actions": dict(cfg.get("actions") or {})}
+
+
+def _action_matchers(taxonomy: dict | None) -> list[tuple[str, re.Pattern]]:
+    out = []
+    for name, pattern in ((taxonomy or {}).get("actions") or {}).items():
+        try:
+            out.append((str(name), re.compile(str(pattern), re.IGNORECASE)))
+        except re.error as exc:
+            raise ValueError(f"Action '{name}' has an invalid pattern: {exc}") from exc
+    return out
+
+
+def build_data(res: RunResult, terms: list[str], site_url: str | None = None, taxonomy: dict | None = None) -> dict:
+    """`taxonomy` (see taxonomy_from_config) adds tags and action tags to each mention. Tags are
+    applied here, when the report is built, so changing them in the config re-tags everything."""
     today = res.today or date.today()
+    tag_map = (taxonomy or {}).get("tags") or {}
+    action_matchers = _action_matchers(taxonomy)
     section_of = {s.name: s.section or OTHER for s in res.statuses}
     meetings: "OrderedDict[str, dict]" = OrderedDict()
     for r in res.window_matches:
@@ -70,12 +92,17 @@ def build_data(res: RunResult, terms: list[str], site_url: str | None = None) ->
             "new": r["run_id"] == res.run_id,
             "doc": r["url"],
             "link": _page_link(r["url"], r["page"], r["kind"]),
+            "tags": list(tag_map.get(r["term"], [])),
+            "actions": [name for name, rx in action_matchers
+                        if rx.search(f"{r['before']} {r['hit']} {r['after']}")],
         })
     base = (site_url or "").rstrip("/") or None
     out = []
     for m in meetings.values():
         m["documents"] = list(m["documents"].values())
         m["terms"] = sorted({x["term"] for x in m["matches"]})
+        m["tags"] = sorted({t for x in m["matches"] for t in x["tags"]})
+        m["actions"] = sorted({a for x in m["matches"] for a in x["actions"]})
         m["first_seen"] = min(x["first_seen"] for x in m["matches"])
         m["new"] = any(x["new"] for x in m["matches"])
         if m["date"]:
@@ -95,6 +122,12 @@ def build_data(res: RunResult, terms: list[str], site_url: str | None = None) ->
         "today": today.isoformat(),
         "window": {"start": (res.report_start or res.start).isoformat(), "end": res.end.isoformat()},
         "terms": terms,
+        # Tag groups (agency, mode, topic …) and action tags present in this report, for the filters.
+        "taxonomy": {
+            "groups": {g: sorted({t.split(":", 1)[1] for m in out for t in m["tags"] if t.split(":", 1)[0] == g})
+                       for g in dict.fromkeys(t.split(":", 1)[0] for v in tag_map.values() for t in v)},
+            "actions": [name for name, _ in action_matchers],
+        },
         "sections": section_order(res),
         "site_url": base,
         "meetings": out,
@@ -343,11 +376,12 @@ def _write_ics(path: Path, text: str) -> None:
         fh.write(text)
 
 
-def write_site(res: RunResult, terms: list[str], out_dir: str | Path, site_url: str | None = None) -> Path:
+def write_site(res: RunResult, terms: list[str], out_dir: str | Path, site_url: str | None = None,
+               taxonomy: dict | None = None) -> Path:
     """Write index.html, data.json, feed.xml, upcoming.ics, plus latest.html and a dated snapshot."""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    data = build_data(res, terms, site_url)
+    data = build_data(res, terms, site_url, taxonomy)
     page = render_page(data)
     (out / "index.html").write_text(page, encoding="utf-8")
     (out / "data.json").write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")

@@ -152,7 +152,8 @@ def test_unchanged_file_is_not_downloaded_again(tmp_path):
     amended = make_pdf([AGENDA_P1, AGENDA_P2 + "\nItem 15. DART Silver Line update"])
     r[DALLAS_AGENDA] = Resp(amended, etag='"v2"')
     res = runner.run(cfg, http=FakeHttp(r), today=TODAY)
-    assert [m["term"] for m in res.new_matches] and all(m["term"] == "DART" for m in res.new_matches)
+    # only the new line is reported: DART, and the Silver Line term on the same line
+    assert {m["term"] for m in res.new_matches} == {"DART", "Silver Line"}
     store = Store(cfg["settings"]["database"])
     try:
         assert store.get_document(DALLAS_AGENDA)["etag"] == '"v2"'

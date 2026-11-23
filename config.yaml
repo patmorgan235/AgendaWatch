@@ -21,12 +21,106 @@ settings:
 # ------------------------------------------------------------------ key terms
 # Plain phrases match whole words, ignore case, and tolerate line breaks inside the phrase.
 # Options: case_sensitive, regex (pattern is a regular expression), whole_word,
-#          exclude_if_nearby (skip a match when one of these phrases is within ~150 characters).
+#          exclude_if_nearby (skip a match when one of these phrases is within ~150 characters),
+#          exclude_context (skip a match only when one of these regexes covers the match itself),
+#          aliases (other spellings reported as this term: a phrase, or {pattern, regex, case_sensitive}),
+#          tags (group:value — groups used: agency, mode, topic; shown and filterable on the site).
+# Where terms overlap, the longest match wins: "Transit" inside "Dallas Area Rapid Transit" or
+# "transit-oriented development" counts only as the longer term.
+# Keep term names stable: a name is part of each passage's fingerprint, so renaming a term makes
+# its existing passages look new once.
 terms:
+  # --- agencies and providers
   - name: DART
     case_sensitive: true          # so "dart" / "Dart Container" don't match
-  - name: Dallas Area Rapid Transit
-  - name: Transit                 # broad on purpose; also catches "transit-oriented development"
+    aliases: [Dallas Area Rapid Transit]
+    tags: [agency:DART]
+  - name: DCTA
+    case_sensitive: true
+    aliases: [Denton County Transportation Authority]
+    tags: [agency:DCTA]
+  - name: Trinity Metro
+    tags: [agency:Trinity Metro]
+  - name: STAR Transit            # Rockwall / Kaufman area
+    tags: [agency:STAR Transit, mode:bus]
+  - name: SPAN                    # Denton County rural transit; bare "span" is a bridge word
+    pattern: 'Special\s+Programs\s+for\s+Aging\s+Needs|SPAN,?\s+(?:Inc\b|Transit|Transportation)'
+    regex: true
+    case_sensitive: true
+    tags: [agency:SPAN, mode:on-demand]
+  - name: Collin County Transit
+    tags: [agency:Collin County Transit, mode:on-demand]
+  - name: M-Line trolley          # McKinney Avenue Transit Authority (Uptown)
+    pattern: 'McKinney\s+Avenue\s+Transit\s+Authority|M-Line(?:\s+trolley)?|MATA\b'
+    regex: true
+    case_sensitive: true
+    tags: [agency:MATA, mode:streetcar]
+
+  # --- rail
+  - name: Silver Line
+    pattern: 'Silver\s+Line|Cotton\s+Belt'
+    regex: true
+    tags: [agency:DART, mode:rail]
+  - name: TEXRail
+    tags: [agency:Trinity Metro, mode:rail]
+  - name: TRE
+    pattern: 'Trinity\s+Railway\s+Express|TRE'
+    regex: true
+    case_sensitive: true
+    exclude_context:              # "TRE" is also someone's initials in Dallas County agendas
+      - 'TRE\s*/\s*TRE'
+      - 'TRE\s+Thomas'
+    tags: [agency:Trinity Metro, agency:DART, mode:rail]
+  - name: Light rail
+    pattern: 'light[\s\-]rail'
+    regex: true
+    tags: [mode:rail]
+  - name: D2 subway
+    pattern: 'D2\s+(?:subway|line|alignment|project)'
+    regex: true
+    tags: [agency:DART, mode:rail]
+  - name: High-speed rail
+    pattern: 'high[\s\-]speed\s+(?:rail|train)'
+    regex: true
+    tags: [mode:rail, topic:intercity rail]
+  - name: Streetcar
+    pattern: 'street[\s\-]?cars?'   # street car, streetcar, street-car, streetcars
+    regex: true
+    tags: [mode:streetcar]
+
+  # --- bus
+  - name: Bus rapid transit
+    pattern: 'bus\s+rapid\s+transit|BRT'
+    regex: true
+    case_sensitive: false
+    exclude_context: ['(?-i:\bbrt\b)']   # only the upper-case acronym
+    tags: [mode:bus]
+  - name: Bus stop or shelter
+    pattern: 'bus\s+(?:stops?|shelters?)'
+    regex: true
+    tags: [mode:bus]
+  - name: Park-and-ride
+    pattern: 'park[\s\-]*(?:and|&|n)[\s\-]*ride'
+    regex: true
+    tags: [mode:bus]
+
+  # --- on-demand and paratransit
+  - name: GoLink
+    tags: [agency:DART, mode:on-demand]
+  - name: Microtransit
+    pattern: 'micro[\s\-]?transit'
+    regex: true
+    tags: [mode:on-demand]
+  - name: On-demand transit
+    pattern: 'on[\s\-]demand\s+(?:transit|transportation|rideshare|ride[\s\-]?share|service)|Arlington\s+On[\s\-]Demand|Via\s+(?:Transportation|rideshare)'
+    regex: true
+    tags: [mode:on-demand]
+  - name: Paratransit
+    pattern: 'para[\s\-]?transit'   # paratransit, para-transit, para transit
+    regex: true
+    tags: [mode:paratransit]
+
+  # --- policy, funding and planning
   - name: GMP
     case_sensitive: true
     exclude_if_nearby:            # construction contracts use GMP for "Guaranteed Maximum Price"
@@ -34,17 +128,41 @@ terms:
       - guaranteed maximum
       - construction manager at risk
       - CMAR
-  - name: General Mobility Program
-  - name: DCTA
-    case_sensitive: true
-  - name: Denton County Transportation Authority
-  - name: Trinity Metro
-  - name: Paratransit
-    pattern: 'para[\s\-]?transit'   # paratransit, para-transit, para transit
+    aliases: [General Mobility Program]
+    tags: [agency:DART, topic:funding]
+  - name: DART membership
+    pattern: 'withdraw(?:al|ing|n)?\s+(?:from\s+)?(?:DART|Dallas\s+Area\s+Rapid\s+Transit)|(?:DART|transit)\s+withdrawal|withdrawal\s+election|(?:DART|transit)\s+sales\s+tax|DART\s+member\s+cit(?:y|ies)|member\s+cit(?:y|ies)\s+of\s+DART'
     regex: true
-  - name: Streetcar
-    pattern: 'street[\s\-]?cars?'   # street car, streetcar, street-car, streetcars
+    tags: [agency:DART, topic:DART membership]
+  - name: Transit-oriented development
+    pattern: 'transit[\s\-]+oriented\s+development|(?-i:\bTOD\b)'
     regex: true
+    tags: [topic:TOD & land use]
+  - name: Complete Streets
+    tags: [topic:active transportation]
+  - name: Bicycle and pedestrian
+    pattern: 'bicycle\s+and\s+pedestrian|bike\s*(?:/|and|&)\s*ped(?:estrian)?|active\s+transportation'
+    regex: true
+    tags: [topic:active transportation]
+  - name: Transit                 # broad on purpose
+    exclude_context:              # not public transit
+      - 'ford\s+transit'
+      - 'transit\s+(?:connect|van|cargo|custom)'
+      - '\bin[\s\-]+transit\b'
+      - 'transit\s+time'
+
+# ------------------------------------------------------------------ action tags
+# Labels for what an agenda item does, found in the text around each match. A mention with an
+# action tag is likely a real item (a vote, a contract, a hearing) rather than a passing reference.
+actions:
+  agreement: 'interlocal|\bILA\b|memorandum\s+of\s+understanding|\bMOU\b|agreement'
+  contract: '\bcontract|\baward|\bpurchase|\bbid\b|procurement|\bRFP\b|\bRFQ\b'
+  resolution or ordinance: '\bresolution\b|\bordinance\b'
+  public hearing: 'public\s+hearing'
+  briefing: '\bbriefing|\bpresentation|work\s+session'
+  appointment: '\bappoint|\bnominat|\breappoint'
+  budget or funding: '\bbudget|\bfunding|\bgrant\b|\bappropriat|\bsales\s+tax'
+  election: '\belection\b'
 
 # ------------------------------------------------------------------ sources
 # type: legistar  — client is the name before .legistar.com

@@ -25,6 +25,11 @@ header p{margin:0;color:var(--muted)}
 .controls input[type=search]{min-width:12rem;flex:1}
 .terms{display:flex;flex-wrap:wrap;gap:6px;width:100%}
 .termbtn{font:inherit;font-size:.82rem;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:3px 10px;cursor:pointer}
+.tags{display:flex;flex-direction:column;gap:6px;width:100%}
+.taggroup{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.taggroup>span{font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;min-width:4.5rem}
+.actchip{display:inline-block;border:1px solid var(--line);color:var(--muted);border-radius:6px;padding:0 6px;font-size:.75rem;margin-left:6px}
+.tagline{color:var(--muted);font-size:.85rem}
 .termbtn[aria-pressed=true]{background:var(--chip);color:var(--chipink);border-color:var(--chipink);font-weight:600}
 .summary{color:var(--muted);font-size:.9rem;margin:6px 0 0}
 h2{font-size:1.2rem;margin:34px 0 12px;padding-bottom:6px;border-bottom:2px solid var(--accent)}
@@ -103,10 +108,12 @@ footer p{margin:4px 0}
   </div>
   <label id="f-upcoming-label"><input type="checkbox" id="f-upcoming" checked> Upcoming meetings only</label>
   <label><input type="checkbox" id="f-new"> <span id="f-new-label">New only</span></label>
+  <label title="Mentions near words like agreement, contract, resolution, public hearing, briefing"><input type="checkbox" id="f-actions"> Action items only</label>
   <label>Section <select id="f-section"><option value="">All sections</option></select></label>
   <label>City / body <select id="f-city"><option value="">All</option></select></label>
   <input type="search" id="f-q" placeholder="Search snippets, cities, meetings…" aria-label="Search">
   <div class="terms" id="f-terms" aria-label="Terms"></div>
+  <div class="tags" id="f-tags" aria-label="Tags"></div>
   <p class="summary" id="summary" aria-live="polite"></p>
 </div>
 
@@ -201,8 +208,9 @@ footer p{margin:4px 0}
   // ---- controls -------------------------------------------------------------
   var fUp = document.getElementById("f-upcoming"), fNew = document.getElementById("f-new"),
       fSec = document.getElementById("f-section"), fCity = document.getElementById("f-city"),
-      fQ = document.getElementById("f-q"), fTerms = document.getElementById("f-terms");
-  var activeTerms = {};
+      fQ = document.getElementById("f-q"), fTerms = document.getElementById("f-terms"),
+      fTags = document.getElementById("f-tags"), fAct = document.getElementById("f-actions");
+  var activeTerms = {}, activeTags = {};
   var VIEW_KEY = "agendawatch.view";
   var vList = document.getElementById("v-list"), vCal = document.getElementById("v-cal"),
       fUpLabel = document.getElementById("f-upcoming-label");
@@ -244,6 +252,24 @@ footer p{margin:4px 0}
     });
     fTerms.appendChild(b);
   });
+  // tag chips, one row per group (agency, mode, topic …): OR within a group, AND across groups
+  var tagGroups = (DATA.taxonomy && DATA.taxonomy.groups) || {};
+  Object.keys(tagGroups).forEach(function (g) {
+    if (!tagGroups[g].length) return;
+    var row = el("div", { class: "taggroup", role: "group", "aria-label": g }, [el("span", { text: g })]);
+    tagGroups[g].forEach(function (v) {
+      var key = g + ":" + v;
+      var b = el("button", { type: "button", class: "termbtn", "aria-pressed": "false", "data-tag": key, text: v });
+      b.addEventListener("click", function () {
+        activeTags[key] = !activeTags[key];
+        b.setAttribute("aria-pressed", activeTags[key] ? "true" : "false");
+        update();
+      });
+      row.appendChild(b);
+    });
+    fTags.appendChild(row);
+  });
+  if (!(DATA.taxonomy && DATA.taxonomy.actions && DATA.taxonomy.actions.length)) fAct.parentNode.hidden = true;
 
   // filters <-> URL query, so a filtered view can be shared
   function readQuery() {
@@ -265,6 +291,13 @@ footer p{margin:4px 0}
       activeTerms[t] = true;
       Array.prototype.forEach.call(fTerms.children, function (b) { if (b.textContent === t) b.setAttribute("aria-pressed", "true"); });
     });
+    if (q.get("actions") === "1") fAct.checked = true;
+    (q.get("tags") || "").split(",").filter(Boolean).forEach(function (t) {
+      activeTags[t] = true;
+      Array.prototype.forEach.call(fTags.querySelectorAll("button[data-tag]"), function (b) {
+        if (b.getAttribute("data-tag") === t) b.setAttribute("aria-pressed", "true");
+      });
+    });
   }
   function writeQuery() {
     var q = new URLSearchParams();
@@ -280,6 +313,9 @@ footer p{margin:4px 0}
     if (fQ.value) q.set("q", fQ.value);
     var t = Object.keys(activeTerms).filter(function (k) { return activeTerms[k]; });
     if (t.length) q.set("terms", t.join(","));
+    var tg = Object.keys(activeTags).filter(function (k) { return activeTags[k]; });
+    if (tg.length) q.set("tags", tg.join(","));
+    if (fAct.checked) q.set("actions", "1");
     var s = q.toString();
     try { history.replaceState(null, "", (s ? "?" + s : location.pathname) + location.hash); } catch (e) { /* file:// in some browsers */ }
   }
@@ -291,6 +327,18 @@ footer p{margin:4px 0}
   function filtered(ignoreUpcoming) {
     var needle = fQ.value.trim().toLowerCase();
     var terms = Object.keys(activeTerms).filter(function (k) { return activeTerms[k]; });
+    var byGroup = {};   // selected tags per group
+    Object.keys(activeTags).forEach(function (k) {
+      if (!activeTags[k]) return;
+      var g = k.split(":")[0];
+      (byGroup[g] = byGroup[g] || []).push(k);
+    });
+    var groups = Object.keys(byGroup);
+    function tagsMatch(x) {
+      return groups.every(function (g) {
+        return byGroup[g].some(function (k) { return (x.tags || []).indexOf(k) >= 0; });
+      });
+    }
     var out = [];
     DATA.meetings.forEach(function (m) {
       if (!ignoreUpcoming && fUp.checked && !isUpcoming(m)) return;
@@ -299,6 +347,8 @@ footer p{margin:4px 0}
       var meetText = (m.city + " " + m.body).toLowerCase();
       var hits = m.matches.filter(function (x) {
         if (terms.length && terms.indexOf(x.term) < 0) return false;
+        if (groups.length && !tagsMatch(x)) return false;
+        if (fAct.checked && !(x.actions && x.actions.length)) return false;
         if (fNew.checked && !isNew(x)) return false;
         return !needle || meetText.indexOf(needle) >= 0 || hitMatches(x, needle);
       });
@@ -327,7 +377,9 @@ footer p{margin:4px 0}
     }
     var meta = el("div", { class: "meta" }, [
       el("span", { class: "when", text: fmtDay(m.date) + (m.date ? " · " + relDay(m.date) : "") }),
-      el("span", { text: m.terms.join(", ") })
+      el("span", { text: m.terms.join(", ") }),
+      (m.tags && m.tags.length) ? el("span", { class: "tagline", text: m.tags.map(function (t) { return t.split(":")[1]; })
+        .filter(function (v, i, a) { return a.indexOf(v) === i; }).join(" · ") }) : null
     ].concat(docs));
     var anyNew = hits.some(isNew);
     var title = el("h3", null, [m.city + " · " + m.body, anyNew ? el("span", { class: "badge-new", text: "NEW" }) : null]);
@@ -337,6 +389,7 @@ footer p{margin:4px 0}
       var page = x.page && x.link.indexOf("#page=") > 0 ? el("a", { class: "page", href: x.link, rel: "noopener", text: "page " + x.page }) : null;
       var row = el("div", { class: "hit" }, [
         el("span", { class: "chip", text: x.term }), page, isNew(x) ? el("span", { class: "badge-new", text: "NEW" }) : null,
+        (x.actions || []).length ? el("span", { class: "actchip", title: "action tag", text: x.actions.join(" · ") }) : null,
         el("p", { class: "snip" }, [x.before, el("mark", { text: x.hit }), x.after])
       ]);
       if (i >= SNIPPETS_SHOWN) row.hidden = true;
@@ -573,7 +626,7 @@ footer p{margin:4px 0}
     }
     pendingFocus = pendingNav = "";
   }
-  [fUp, fNew, fSec, fCity].forEach(function (c) { c.addEventListener("change", update); });
+  [fUp, fNew, fAct, fSec, fCity].forEach(function (c) { c.addEventListener("change", update); });
   document.getElementById("sources-link").addEventListener("click", function () { document.getElementById("sources-wrap").open = true; });
   fQ.addEventListener("input", update);
 

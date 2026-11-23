@@ -38,6 +38,9 @@ CREATE TABLE IF NOT EXISTS feeds (
     kind TEXT, name TEXT, path TEXT UNIQUE, first_published TEXT, last_published TEXT,
     PRIMARY KEY (kind, name)
 );
+CREATE TABLE IF NOT EXISTS meta (
+    key TEXT PRIMARY KEY, value TEXT
+);
 CREATE INDEX IF NOT EXISTS idx_matches_run ON matches(run_id);
 CREATE INDEX IF NOT EXISTS idx_docs_date ON documents(meeting_date);
 """
@@ -143,10 +146,11 @@ class Store:
                 )
 
     # matches
-    def add_hits(self, url: str, hits, run_id: int, scope: str) -> int:
-        """Insert hits; return how many were new. `scope` (city|date) keeps keys unique per meeting."""
+    def add_hits(self, url: str, hits, run_id: int, scope: str, first_seen: str | None = None) -> int:
+        """Insert hits; return how many were new. `scope` (city|date) keeps keys unique per meeting.
+        `first_seen` back-dates the new hits (used when re-matching stored agendas)."""
         new = 0
-        now = self.now()
+        now = first_seen or self.now()
         with self.db:  # all or nothing, like save_document
             for h in hits:
                 key = f"{scope}|{h.key}"
@@ -157,6 +161,34 @@ class Store:
                 )
                 new += cur.rowcount
         return new
+
+    # settings remembered between runs
+    def get_meta(self, key: str) -> str | None:
+        row = self.db.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
+        return row["value"] if row else None
+
+    def set_meta(self, key: str, value: str) -> None:
+        with self.db:
+            self.db.execute("INSERT INTO meta (key, value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                            (key, value))
+
+    # re-matching stored agendas after the term list changes
+    def documents_with_text(self) -> list[sqlite3.Row]:
+        return self.db.execute(
+            """SELECT d.* FROM documents d WHERE d.status='ok' AND EXISTS (SELECT 1 FROM pages p WHERE p.url=d.url)
+               ORDER BY d.meeting_date""").fetchall()
+
+    def page_texts(self, url: str) -> list[str]:
+        return [r["text"] or "" for r in self.db.execute("SELECT text FROM pages WHERE url=? ORDER BY page", (url,))]
+
+    def drop_hits_except(self, url: str, keep_keys: set[str]) -> int:
+        """Remove this document's matches whose key isn't in keep_keys; return how many."""
+        rows = self.db.execute("SELECT key FROM matches WHERE url=?", (url,)).fetchall()
+        gone = [r["key"] for r in rows if r["key"] not in keep_keys]
+        if gone:
+            with self.db:
+                self.db.executemany("DELETE FROM matches WHERE key=? AND url=?", [(k, url) for k in gone])
+        return len(gone)
 
     def matches_for_run(self, run_id: int) -> list[sqlite3.Row]:
         return self.db.execute(
