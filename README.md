@@ -123,6 +123,9 @@ Each run writes a small website into `reports/`:
 | `data.json` | Every match for meetings in the report window, grouped by meeting, with when each was first found. |
 | `feed.xml` | Atom/RSS feed of new mentions — subscribe in any feed reader. |
 | `upcoming.ics` | Calendar feed of upcoming meetings whose agendas mention your terms. |
+| `feeds/city/<city>.ics`, `.xml` | The same calendar and feed for one city or county. Written for every configured city, even with no current mentions, so links never break. |
+| `feeds/section/<section>.ics`, `.xml` | The same for one report section (e.g. `dart-member-cities`). |
+| `feeds/meeting/<id>.ics` | One meeting, for "Add to calendar". |
 | `agenda-report-YYYY-MM-DD.html` | That day's snapshot of the page. |
 
 The page shows **every** mention for meetings in the report window (30 days back via `report_lookback_days`, 60 ahead via `lookahead_days`; each run re-checks only the last 10 days, `lookback_days`), not just the ones found by the latest run, grouped into sections (DART member cities, DCTA member cities, Trinity Metro member & associate cities, Regional, Counties, Eligible to join a transit agency). You can:
@@ -130,9 +133,12 @@ The page shows **every** mention for meetings in the report window (30 days back
 - show **upcoming meetings only** (on by default) or include recent past ones;
 - show only what's **new since your last visit** (remembered by your browser; on a first visit, new in the latest run);
 - filter by section, city or meeting body, and term, or search the snippets;
-- share a filtered view (filters are kept in the page's address) or link to one meeting (`#m-…`).
+- share a filtered view (filters are kept in the page's address) or link to one meeting (`#m-…`);
+- switch between the **list** and a **calendar** (month grid; pick a day to see its meetings; works with the keyboard and on phones).
 
-Each meeting shows how many days away it is, which terms it mentions, the matching passages with a link to the right page of the PDF, and links to the agenda, packet and meeting page.
+**Subscribe** (bottom of the page) lists a calendar and an RSS feed for every city and section, with an "Add to Google Calendar" link (needs `site_url`). Google Calendar refreshes subscribed calendars every several hours.
+
+Each meeting shows how many days away it is, which terms it mentions, the matching passages with a link to the right page of the PDF, and links to the agenda, packet and meeting page, plus "Add to calendar" (Google or `.ics`).
 
 **Sources** at the bottom (or `index.html#sources`) is the health check:
 
