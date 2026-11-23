@@ -18,6 +18,17 @@ settings:
   page_retention_days: 0     # drop stored page text for meetings older than this (0 = keep all;
                              # matches are always kept). Hosted runs set 90 to keep the database small.
 
+# ------------------------------------------------------------------ Google Calendar (optional)
+# Push meetings with mentions into Google Calendars you own, right after each hosted run
+# (`agenda_watch.py gcal --dry-run` previews it). A meeting goes to every calendar whose key is
+# its city, its section, or "*". Needs a service account; see docs/runbook.md "Google Calendar sync".
+# Anyone can also just subscribe to the published feeds/city/<city>.ics without any of this.
+# google_calendar:
+#   calendars:
+#     Plano: abc123@group.calendar.google.com
+#     "DART member cities": def456@group.calendar.google.com
+#     "*": all789@group.calendar.google.com
+
 # ------------------------------------------------------------------ key terms
 # Plain phrases match whole words, ignore case, and tolerate line breaks inside the phrase.
 # Options: case_sensitive, regex (pattern is a regular expression), whole_word,

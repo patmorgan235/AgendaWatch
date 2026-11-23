@@ -215,11 +215,26 @@ so it came first.
 - [ ] Revisit the blocked and unresolved sources (Arlington, Rockwall, Corinth), and contact cities about the blocked ones (Irving, Tarrant County, the Municode Meetings and AgendaLink cities).
 - [ ] Read deeper where possible: Legistar attachments for key bodies, and Fort Worth staff reports if a sanctioned way to read them appears.
 
+### Phase 6 — Calendars
+
+- [x] **Calendar view** on the site: a month grid next to the list. Pick a day to see its meetings. It works with the keyboard and on phones, and the view, month and day are kept in the URL.
+- [x] **Add to calendar** on every meeting: a prefilled Google Calendar link and a one-event `.ics`.
+- [x] **Per-city and per-section feeds** (`feeds/city/<city>.ics|.xml`, `feeds/section/…`). They're listed in the page's Subscribe panel with "Add to Google Calendar" links, and written even when empty so links never break.
+- [x] **Google Calendar push** into calendars the owner runs (one per town, section, or all). It's idempotent (stable event IDs, content hashes), only touches its own events, and never fails the run. The key lives in Key Vault. Setup is in the runbook, "Google Calendar sync".
+- [ ] Create the town calendars, store the key, and turn it on (`GOOGLE_CALENDAR=true infra/deploy.sh`).
+
 ### Later
 
+- **Email or Slack/Teams alerts for new matches:** post each run's new matches to a webhook or send an email (the "Limited push delivery" gap).
+- **Calendar of all meetings:** show every listed meeting, with the ones mentioning a term highlighted. This needs every document in the window published, not just matches.
+- **Code-health follow-ups:**
+  - use the run date everywhere instead of today's date;
+  - make backfill cover month-based link pages;
+  - run sources in parallel, with per-host throttling;
+  - pin dependency versions and add `ruff` to CI.
+- **Keyless Google auth:** workload identity federation from Azure to Google Cloud, instead of a stored service-account key.
 - **Hybrid fetch for cloud-blocked sources:** a small job on a home connection fetches only the sources that block data-center IPs (Richardson's cor.net and Hurst today) and uploads their results to the same storage, restoring full lead time for them. It depends on that machine being on.
 - Searchable history: a static search page or a published read-only copy of the database.
-- Email or Slack alerts for new matches.
 - Ranking or triage: separate action items from passing mentions; reduce noise from broad terms such as "Transit".
 
 ## Risks and open questions

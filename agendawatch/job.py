@@ -55,8 +55,29 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(out, ensure_ascii=False)
 
 
+def sync_google_calendar(cfg: dict, data_json: Path, session=None) -> None:
+    """Push the published meetings to the owner's Google Calendars, if configured.
+    Never raises: the site is already published, so a calendar problem only logs a warning."""
+    from .gcal import sync_from_config
+
+    try:
+        data = json.loads(Path(data_json).read_text(encoding="utf-8"))
+        res = sync_from_config(cfg, data, session=session)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("google calendar sync failed: %s", exc, extra={"fields": {"event": "gcal_failed", "error": str(exc)}})
+        return
+    if res is None:
+        return
+    fields = {"inserted": res.inserted, "updated": res.updated, "deleted": res.deleted,
+              "unchanged": res.unchanged, "failed_calendars": len(res.errors)}
+    log.info("google calendar: %s", res.summary(), extra={"fields": {"event": "gcal_synced", **fields}})
+    if res.errors:
+        log.warning("google calendar: %s", "; ".join(res.errors)[:500],
+                    extra={"fields": {"event": "gcal_failed", "error": "; ".join(res.errors)[:2000]}})
+
+
 def run_job(cfg: dict, storage: Storage, today: date | None = None, http=None,
-            backfill_days: int | None = None) -> int:
+            backfill_days: int | None = None, gcal_session=None) -> int:
     settings = cfg.setdefault("settings", {})
     terms = [t if isinstance(t, str) else t["name"] for t in cfg["terms"]]
     t0 = time.time()
@@ -92,6 +113,7 @@ def run_job(cfg: dict, storage: Storage, today: date | None = None, http=None,
             n = storage.publish_site(site)
             log.info("published %d site file(s); database %.1f MB", n, db.stat().st_size / 1e6,
                      extra={"fields": {"event": "published", "files": n, "db_mb": round(db.stat().st_size / 1e6, 1)}})
+            sync_google_calendar(cfg, site / "data.json", session=gcal_session)   # still under the lock
     except LockHeld as exc:
         log.error("another run is still in progress: %s", exc, extra={"fields": {"event": "locked"}})
         return EXIT_LOCKED

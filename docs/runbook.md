@@ -130,8 +130,65 @@ The original `*.web.core.windows.net` address keeps working too.
 - **Cloudflare error 526:** SSL mode is "Full (strict)". **Error 525 or redirect loops:** SSL mode is "Flexible". Use "Full".
 - **HTTP 400 "InvalidUri" or similar from Azure:** the domain isn't registered on the storage account yet (step 5).
 
+## Google Calendar sync (optional)
+
+There are two ways to get meetings into Google Calendar:
+- **Subscribe by URL (no setup).** Anyone can do this. Use the site's "Subscribe to a city or section" panel, or in Google Calendar choose **Other calendars → + → From URL** and paste `https://agendas.urbancivic.cloud/feeds/city/<city>.ics`. Google refreshes subscribed calendars every several hours.
+- **Push into calendars you own (this section).** After each run, the job writes events into Google Calendars you control, for example one official calendar per town. They update right away, and you can make them public, share them or embed them.
+
+Only meetings whose agendas mention a watched term are pushed, the same set as the site.
+
+**1. Google side (once)**
+1. In the [Google Cloud console](https://console.cloud.google.com/), create a project (e.g. `agendawatch`) and enable the **Google Calendar API** for it.
+2. Go to **IAM & Admin → Service accounts → Create service account** (e.g. `agendawatch-sync`). It doesn't need any project roles.
+3. On the service account, open **Keys → Add key → JSON** and download the key file. Keep it private: it can edit every calendar you share with it.
+4. In [Google Calendar](https://calendar.google.com/), create a calendar for each town (**Other calendars → + → Create new calendar**), e.g. "Plano – transit agenda items".
+5. For each calendar, open **Settings and sharing → Share with specific people**, add the service account's email (`…@….iam.gserviceaccount.com`), and give it **Make changes to events**.
+6. Still in each calendar's settings, copy the **Calendar ID** from **Integrate calendar**. It looks like `abc123@group.calendar.google.com`.
+7. Optional: to share a calendar publicly, tick **Make available to public**. The same page has the public URL and the embed code.
+
+**2. Configure**
+Add the calendars to `config.yaml`. Calendar IDs aren't secret.
+```yaml
+google_calendar:
+  calendars:
+    Plano: abc123@group.calendar.google.com          # by city (as in the site's City filter)
+    "DART member cities": def456@group.calendar.google.com   # or by report section
+    "*": all789@group.calendar.google.com             # or everything
+```
+
+**3. Test locally (optional)**
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS=~/Downloads/agendawatch-sync-key.json
+python agenda_watch.py run              # writes reports/data.json
+python agenda_watch.py gcal --dry-run   # lists what would be added, updated or removed
+python agenda_watch.py gcal             # does it; run it again and everything is "unchanged"
+```
+
+**4. Turn it on in Azure.** The key lives in Key Vault, so redeploys never remove it.
+```bash
+infra/deploy.sh   # creates the Key Vault and lets you (the signed-in user) store secrets in it
+VAULT=$(az keyvault list -g rg-agendawatch --query "[0].name" -o tsv)
+az keyvault secret set --vault-name "$VAULT" -n google-credentials --file ~/Downloads/agendawatch-sync-key.json -o none
+GOOGLE_CALENDAR=true infra/deploy.sh   # gives the job the secret; later runs of deploy.sh keep it on
+```
+Then delete the downloaded key file. Commit the `config.yaml` change; the next push deploys it.
+
+**Check:** after the next run, Log Analytics shows a `gcal_synced` event with the counts:
+```kusto
+ContainerAppConsoleLogs_CL | where Log_s has "gcal_" | project TimeGenerated, Log_s | order by TimeGenerated desc
+```
+
+**Troubleshooting**
+- **`gcal_failed` … "is the calendar shared with the service account…"**: step 5 is missing for that calendar, or its ID is wrong. The other calendars still sync.
+- **`no credentials set; skipped`**: `GOOGLE_CALENDAR=true` wasn't deployed, or the secret is missing.
+- **Rotate the key:** run `az keyvault secret set` again with the new key. The job reads it at its next start, and you can then delete the old key in Google Cloud.
+- **Turn it off:** run `GOOGLE_CALENDAR=false infra/deploy.sh`, or remove `google_calendar` from `config.yaml`.
+
+A calendar problem never fails the run: the site is already published by then. Events are only ever added, updated or removed if this tool created them, and events before the report window are kept as history.
+
 ## Costs (rough, per month)
 
 Container Registry Basic ≈ $5; storage, Log Analytics and the job itself are cents (the job fits
-in Container Apps' monthly free grant). Delete everything with
+in Container Apps' monthly free grant). Key Vault and the Google Calendar API are free at this volume. Delete everything with
 `az group delete -n rg-agendawatch`.
