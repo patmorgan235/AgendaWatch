@@ -26,6 +26,8 @@ def counts(text):
     ("Sunday TRE Plus Incremental Fuel Charge", {"TRE": 1}),
     ("light rail and the D2 subway project", {"Light rail": 1, "D2 subway": 1}),
     ("high-speed rail station", {"High-speed rail": 1}),
+    ("AMTRAK Heartland Flyer and the Texas Eagle", {"Amtrak": 3}),
+    ("regional passenger rail and passenger trains", {"Passenger rail": 2}),
     ("M-Line trolley, McKinney Avenue Transit Authority", {"M-Line trolley": 2}),
     ("bus rapid transit (BRT) on Lancaster", {"Bus rapid transit": 2}),
     ("new bus shelters and bus stops", {"Bus stop or shelter": 2}),
