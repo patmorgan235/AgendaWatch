@@ -115,6 +115,7 @@ def build_data(res: RunResult, terms: list[str], site_url: str | None = None, ta
         "last_new": s.last_new, "stale": s.stale, "stale_after_days": s.stale_after_days,
         "lead_days": s.lead_days, "lead_samples": s.lead_samples,
         "failing_runs": s.failing_runs, "failing_since": s.failing_since,
+        "agenda_page": s.agenda_page,
     } for s in res.statuses]
     return {
         "generated": datetime.now().isoformat(timespec="seconds"),

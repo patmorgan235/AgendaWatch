@@ -138,6 +138,8 @@ The page shows **every** mention for meetings in the report window (30 days back
 
 **Subscribe** (bottom of the page) lists a calendar and an RSS feed for every city and section, with an "Add to Google Calendar" link (needs `site_url`). Google Calendar refreshes subscribed calendars every several hours.
 
+The **Cities** view lists every city, county and agency being watched, by section, with a link to its own agenda page, whether it was read in the last run, how many meetings mention transit (and the next upcoming one), what they mention, how much notice it usually gives, and calendar/RSS links. "Show meetings" opens the list filtered to that city.
+
 Each meeting shows how many days away it is, which terms and tags it mentions, the matching passages with a link to the right page of the PDF, and links to the agenda, packet and meeting page, plus "Add to calendar" (Google or `.ics`).
 
 **Sources** at the bottom (or `index.html#sources`) is the health check:
@@ -220,6 +222,7 @@ Everything is in `config.yaml`.
 - **After changing terms:** the next run re-matches every agenda whose text is still stored. Matches that no longer apply are removed; new matches on upcoming meetings show as new, while those on past meetings are back-dated so feeds aren't flooded. Keep term names stable: renaming a term makes its passages look new once.
 - **Fewer Dallas meetings:** Dallas posts agendas for dozens of boards. Uncomment the `bodies:` line to keep only the ones you care about.
 - **Deeper Legistar search:** `attachments: names` also searches agenda item titles and attachment names; `download` also downloads and searches attachments (slower).
+- **Agenda page link:** the Cities view links each source to the page people use to find agendas, worked out from the source (e.g. `https://<client>.legistar.com/Calendar.aspx`). Set `agenda_page:` on a source to use a different page.
 - **A page with one row per meeting:** use `type: doc_table` and list which columns to read in `columns` (see Richardson).
 - **Another city:** if its agendas are at `<name>.portal.civicclerk.com`, copy the Rowlett block and change `tenant`. If it's on Legistar, copy a Legistar block and change `client` to the name before `.legistar.com`. For other sites, use `type: link_page` with the page that lists agendas and a `link_pattern` matching the agenda links.
 

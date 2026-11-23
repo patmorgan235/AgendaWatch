@@ -87,6 +87,7 @@ def test_full_run_dedupes_and_reports(tmp_path):
     assert next(m for m in data["meetings"] if m["city"] == "Plano")["section"] == "DCTA member cities"
     assert data["sections"][:2] == ["DART member cities", "DCTA member cities"]
     assert "503" in next(s for s in data["sources"] if s["name"] == "Addison")["error"]
+    assert next(s for s in data["sources"] if s["name"] == "Dallas")["agenda_page"] == "https://cityofdallas.legistar.com/Calendar.aspx"
 
     html = build_html(res, ["DART"])
     embedded = html.split('<script id="data" type="application/json">')[1].split("</script>")[0]

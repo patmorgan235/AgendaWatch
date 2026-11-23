@@ -40,6 +40,7 @@ class SourceStatus:
     lead_samples: int = 0
     failing_runs: int = 0                # consecutive runs ending with an error, including this one
     failing_since: str | None = None
+    agenda_page: str = ""                # the city's own agenda page, for people
 
 
 @dataclass
@@ -239,7 +240,7 @@ def run(config: dict, backfill_days: int | None = None, http: Http | None = None
     try:
         for src in sources:
             st = SourceStatus(src.name, src.city, src.platform, section=src.section,
-                              stale_after_days=src.stale_after_days)
+                              stale_after_days=src.stale_after_days, agenda_page=src.page_url())
             statuses.append(st)
             if src.note:
                 st.notes.append(src.note)
