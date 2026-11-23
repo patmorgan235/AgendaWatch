@@ -569,6 +569,40 @@ footer p{margin:4px 0}
   if (stale) flags.push(stale + " look" + (stale === 1 ? "s" : "") + " stale");
   if (flags.length) document.querySelector("#sources-wrap summary").textContent += " — " + flags.join(", ");
 
+  // ---- view forced-download files in the browser ----------------------------
+  // Some agenda hosts send "Content-Disposition: attachment", so clicking the file downloads it
+  // instead of showing it. Those hosts allow cross-origin reads, so fetch the file here and open it
+  // in a new tab as a blob, which the browser's own viewer displays. If anything goes wrong the new
+  // tab just loads the original link. Ctrl/Shift/middle-click keep the browser's default behaviour.
+  var FORCED_DOWNLOAD = [
+    /^https:\/\/[^\/]+\.api\.civicclerk\.com\/v1\/Meetings\/GetMeetingFileStream\(/i
+  ];
+  var VIEWABLE = /^(application\/pdf|image\/|text\/plain)/i;
+  document.addEventListener("click", function (e) {
+    var a = e.target.closest && e.target.closest("a[href]");
+    if (!a || e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+    var url = a.href, hash = "", i = url.indexOf("#");
+    if (i >= 0) { hash = url.slice(i); url = url.slice(0, i); }
+    if (!FORCED_DOWNLOAD.some(function (re) { return re.test(url); })) return;
+    var w = window.open("", "_blank");
+    if (!w) return;   // pop-up blocked: let the link do what it normally does
+    e.preventDefault();
+    try {
+      w.opener = null;
+      w.document.title = "Loading…";
+      w.document.body.textContent = "Loading " + (a.textContent || "document") + "…";
+    } catch (err) { /* tab not scriptable; the navigation below still works */ }
+    fetch(url, { credentials: "omit" }).then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.blob();
+    }).then(function (b) {
+      if (!VIEWABLE.test(b.type)) throw new Error("not viewable: " + b.type);
+      w.location.replace(URL.createObjectURL(b) + hash);   // #page=N still works in the PDF viewer
+    }).catch(function () {
+      w.location.replace(a.href);
+    });
+  });
+
   // ---- start ---------------------------------------------------------------
   readQuery();
   if (location.hash === "#sources") document.getElementById("sources-wrap").open = true;
