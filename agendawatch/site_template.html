@@ -13,16 +13,32 @@
 --line:#2c333a;--accent:#4fc39a;--mark:#6b5a12;--markink:#fff6cf;--chip:#1f3a30;--chipink:#9fe3c6;
 --new:#ffb59e;--newbg:#3d2219;--warn:#fdba74;--focus:#93c5fd;color-scheme:dark}}
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
 a{color:var(--accent)}
 :focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 .wrap{max-width:960px;margin:0 auto;padding:24px 16px 64px}
 header h1{font-size:1.6rem;margin:0 0 4px;letter-spacing:-.01em}
 header p{margin:0;color:var(--muted)}
-.controls{position:sticky;top:0;z-index:5;background:var(--bg);padding:12px 0;margin:16px 0 8px;border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center}
+.controls{position:sticky;top:0;z-index:5;background:var(--bg);padding:12px 0 8px;margin:16px 0 8px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.quick{display:flex;flex-wrap:wrap;gap:4px 16px}
+.filterbtn{font:inherit;font-size:.9rem;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:5px 12px;cursor:pointer;display:inline-flex;gap:6px;align-items:center}
+.filterbtn::after{content:"";width:.45em;height:.45em;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg) translateY(-2px);margin-left:2px}
+.filterbtn[aria-expanded=true]::after{transform:rotate(-135deg) translateY(-1px)}
+.filterbtn[aria-expanded=true]{border-color:var(--chipink)}
+.count{background:var(--accent);color:var(--card);border-radius:999px;font-size:.75rem;font-weight:700;padding:0 7px;line-height:1.5}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:12px;max-height:55vh;overflow-y:auto}
+.selects{display:flex;flex-wrap:wrap;gap:8px 16px}
+.termsbox{margin:0}
+.termsbox summary{font-weight:400;font-size:.85rem;color:var(--muted)}
+.termsbox .terms{margin-top:8px}
+.active{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.activechip{font:inherit;font-size:.8rem;background:var(--chip);color:var(--chipink);border:1px solid var(--chipink);border-radius:999px;padding:1px 8px 1px 10px;cursor:pointer}
+.activechip span{margin-left:4px;font-weight:700}
 .controls label{display:inline-flex;gap:6px;align-items:center;font-size:.92rem}
 .controls select,.controls input[type=search]{font:inherit;font-size:.92rem;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);max-width:100%}
-.controls input[type=search]{min-width:12rem;flex:1}
+.controls input[type=search]{min-width:10rem;flex:1}
 .terms{display:flex;flex-wrap:wrap;gap:6px;width:100%}
 .termbtn{font:inherit;font-size:.82rem;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:3px 10px;cursor:pointer}
 .tags{display:flex;flex-direction:column;gap:6px;width:100%}
@@ -31,7 +47,7 @@ header p{margin:0;color:var(--muted)}
 .actchip{display:inline-block;border:1px solid var(--line);color:var(--muted);border-radius:6px;padding:0 6px;font-size:.75rem;margin-left:6px}
 .tagline{color:var(--muted);font-size:.85rem}
 .termbtn[aria-pressed=true]{background:var(--chip);color:var(--chipink);border-color:var(--chipink);font-weight:600}
-.summary{color:var(--muted);font-size:.9rem;margin:6px 0 0}
+.summary{color:var(--muted);font-size:.9rem;margin:0}
 h2{font-size:1.2rem;margin:34px 0 12px;padding-bottom:6px;border-bottom:2px solid var(--accent)}
 .meeting{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:0 0 12px;scroll-margin-top:140px}
 .meeting.target{box-shadow:0 0 0 3px var(--focus)}
@@ -86,7 +102,7 @@ footer p{margin:4px 0}
 .cal-dot{display:none}
 #day-panel h2 .note{font-weight:400;margin-left:8px}
 .linkbtn{font:inherit;font-size:.85rem;background:none;border:0;color:var(--accent);cursor:pointer;padding:0;text-decoration:underline}
-@media (max-width:600px){.controls{position:static}.wrap{padding-top:16px}
+@media (max-width:600px){.wrap{padding-top:16px}.bar input[type=search]{flex-basis:100%}.bar .filterbtn{margin-left:auto}.viewtoggle .termbtn{padding:4px 10px}.panel{max-height:60vh}
 .cal-cell{min-height:50px;align-items:center;padding:4px 2px}.daynum{align-self:center}
 .pill,.cal-more{display:none}
 .cal-dot{display:inline-block;min-width:1.5em;font-size:.7rem;font-weight:700;text-align:center;background:var(--chip);color:var(--chipink);border-radius:999px}
@@ -102,18 +118,31 @@ footer p{margin:4px 0}
 </header>
 
 <div class="controls" role="search" aria-label="Filter meetings">
-  <div class="viewtoggle" role="group" aria-label="View">
-    <button type="button" class="termbtn" id="v-list" aria-pressed="true">List</button>
-    <button type="button" class="termbtn" id="v-cal" aria-pressed="false">Calendar</button>
+  <div class="bar">
+    <input type="search" id="f-q" placeholder="Search snippets, cities, meetings…" aria-label="Search">
+    <div class="viewtoggle" role="group" aria-label="View">
+      <button type="button" class="termbtn" id="v-list" aria-pressed="true">List</button>
+      <button type="button" class="termbtn" id="v-cal" aria-pressed="false">Calendar</button>
+    </div>
+    <button type="button" class="filterbtn" id="f-toggle" aria-expanded="false" aria-controls="f-panel">Filters<span class="count" id="f-count" hidden></span></button>
   </div>
-  <label id="f-upcoming-label"><input type="checkbox" id="f-upcoming" checked> Upcoming meetings only</label>
-  <label><input type="checkbox" id="f-new"> <span id="f-new-label">New only</span></label>
-  <label title="Mentions near words like agreement, contract, resolution, public hearing, briefing"><input type="checkbox" id="f-actions"> Action items only</label>
-  <label>Section <select id="f-section"><option value="">All sections</option></select></label>
-  <label>City / body <select id="f-city"><option value="">All</option></select></label>
-  <input type="search" id="f-q" placeholder="Search snippets, cities, meetings…" aria-label="Search">
-  <div class="terms" id="f-terms" aria-label="Terms"></div>
-  <div class="tags" id="f-tags" aria-label="Tags"></div>
+  <div class="quick">
+    <label id="f-upcoming-label"><input type="checkbox" id="f-upcoming" checked> Upcoming only</label>
+    <label><input type="checkbox" id="f-new"> <span id="f-new-label">New only</span></label>
+    <label title="Mentions near words like agreement, contract, resolution, public hearing, briefing"><input type="checkbox" id="f-actions"> Action items only</label>
+  </div>
+  <div class="panel" id="f-panel" hidden>
+    <div class="selects">
+      <label>Section <select id="f-section"><option value="">All sections</option></select></label>
+      <label>City / body <select id="f-city"><option value="">All</option></select></label>
+    </div>
+    <div class="tags" id="f-tags" aria-label="Tags"></div>
+    <details class="termsbox" id="f-terms-wrap">
+      <summary>Specific terms <span class="note" id="f-terms-n"></span></summary>
+      <div class="terms" id="f-terms" aria-label="Terms"></div>
+    </details>
+  </div>
+  <div class="active" id="f-active" hidden></div>
   <p class="summary" id="summary" aria-live="polite"></p>
 </div>
 
@@ -211,6 +240,57 @@ footer p{margin:4px 0}
       fQ = document.getElementById("f-q"), fTerms = document.getElementById("f-terms"),
       fTags = document.getElementById("f-tags"), fAct = document.getElementById("f-actions");
   var activeTerms = {}, activeTags = {};
+  // ---- filter panel: collapsible; active filters show as removable chips -----
+  var fToggle = document.getElementById("f-toggle"), fPanel = document.getElementById("f-panel"),
+      fCount = document.getElementById("f-count"), fActive = document.getElementById("f-active"),
+      fTermsWrap = document.getElementById("f-terms-wrap");
+  var PANEL_KEY = "agendawatch.filters";
+  function setPanel(open, save) {
+    fPanel.hidden = !open;
+    fToggle.setAttribute("aria-expanded", open ? "true" : "false");
+    if (save) pref(PANEL_KEY, open ? "open" : "closed");
+  }
+  fToggle.addEventListener("click", function () { setPanel(fPanel.hidden, true); update(); });
+  setPanel(pref(PANEL_KEY) === "open", false);
+  function setPressed(container, attr, key, on) {
+    Array.prototype.forEach.call(container.querySelectorAll("button"), function (b) {
+      if ((attr ? b.getAttribute(attr) : b.textContent) === key) b.setAttribute("aria-pressed", on ? "true" : "false");
+    });
+  }
+  function renderActive() {
+    var chips = [];
+    function chip(label, clear) {
+      var b = el("button", { type: "button", class: "activechip", "aria-label": "Remove filter: " + label }, [label, el("span", { "aria-hidden": "true", text: "×" })]);
+      b.addEventListener("click", function () { clear(); update(); });
+      chips.push(b);
+    }
+    if (fSec.value) chip(fSec.value, function () { fSec.value = ""; });
+    if (fCity.value) chip(fCity.value, function () { fCity.value = ""; });
+    Object.keys(activeTags).filter(function (k) { return activeTags[k]; }).forEach(function (k) {
+      chip(k.split(":").slice(1).join(":"), function () { activeTags[k] = false; setPressed(fTags, "data-tag", k, false); });
+    });
+    Object.keys(activeTerms).filter(function (k) { return activeTerms[k]; }).forEach(function (k) {
+      chip("“" + k + "”", function () { activeTerms[k] = false; setPressed(fTerms, null, k, false); });
+    });
+    fCount.hidden = !chips.length;
+    fCount.textContent = chips.length ? String(chips.length) : "";
+    fActive.textContent = "";
+    // Shown under the bar while the panel is closed, so a filter is never hidden from view.
+    fActive.hidden = !chips.length || !fPanel.hidden;
+    if (fActive.hidden) return;
+    chips.forEach(function (c) { fActive.appendChild(c); });
+    if (chips.length > 1) {
+      var all = el("button", { type: "button", class: "linkbtn", text: "Clear all" });
+      all.addEventListener("click", function () {
+        fSec.value = ""; fCity.value = "";
+        Object.keys(activeTags).forEach(function (k) { activeTags[k] = false; });
+        Object.keys(activeTerms).forEach(function (k) { activeTerms[k] = false; });
+        Array.prototype.forEach.call(fPanel.querySelectorAll("button[aria-pressed]"), function (b) { b.setAttribute("aria-pressed", "false"); });
+        update();
+      });
+      fActive.appendChild(all);
+    }
+  }
   var VIEW_KEY = "agendawatch.view";
   var vList = document.getElementById("v-list"), vCal = document.getElementById("v-cal"),
       fUpLabel = document.getElementById("f-upcoming-label");
@@ -291,6 +371,7 @@ footer p{margin:4px 0}
       activeTerms[t] = true;
       Array.prototype.forEach.call(fTerms.children, function (b) { if (b.textContent === t) b.setAttribute("aria-pressed", "true"); });
     });
+    if (Object.keys(activeTerms).length) fTermsWrap.open = true;
     if (q.get("actions") === "1") fAct.checked = true;
     (q.get("tags") || "").split(",").filter(Boolean).forEach(function (t) {
       activeTags[t] = true;
@@ -409,6 +490,7 @@ footer p{margin:4px 0}
   function countHits(items) { return items.reduce(function (n, it) { return n + it.hits.length; }, 0); }
   function update() {
     fillCities();
+    renderActive();
     var cal = view === "calendar";
     // The calendar has its own past/future navigation, so "upcoming only" doesn't apply there.
     fUp.disabled = cal;
@@ -633,7 +715,9 @@ footer p{margin:4px 0}
   // ---- header, sources, footer --------------------------------------------
   function fmtStamp(ts) { return ts ? new Date(ts).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "—"; }
   document.getElementById("stamp").textContent = "Updated " + fmtStamp(DATA.generated) +
-    " · meetings " + fmtDay(DATA.window.start) + " to " + fmtDay(DATA.window.end) + " · watching for " + DATA.terms.join(", ");
+    " · meetings " + fmtDay(DATA.window.start) + " to " + fmtDay(DATA.window.end) + " · watching " + plural(DATA.terms.length, "term");
+  document.getElementById("stamp").title = DATA.terms.join(", ");
+  document.getElementById("f-terms-n").textContent = "(" + DATA.terms.length + ")";
   document.getElementById("foot-run").textContent = "Last run started " + fmtStamp(DATA.run.started) +
     (DATA.run.previous ? "; previous run " + fmtStamp(DATA.run.previous) : "") + ".";
   var tb = document.querySelector("#sources tbody"), bad = 0, stale = 0;
