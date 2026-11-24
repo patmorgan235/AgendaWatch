@@ -51,6 +51,12 @@ def test_gmp_skips_guaranteed_maximum_price():
     assert "GMP" not in names("Approve a GMP (Guaranteed Maximum Price) amendment with the CMAR")
     assert names("DART GMP funds for the Alpha Road project") == {"DART": 1, "GMP": 1}
     assert "GMP" not in names("gmp lowercase is not the acronym")
+    # PDF text with lost or extra spaces
+    assert "GMP" not in names("EstablishingtheInitialGuaranteedMaximumPrice(GMP)andtheSubstantialCompletionDate")
+    assert "GMP" not in names("selected as the CM AR. Cost savings below the GMP amount go to the city")
+    # construction GMPs with no other hint don't count; DART's GMP does
+    assert "GMP" not in names("Approval of GMP Amendment 3 with Crossland Construction for the Senior Center")
+    assert names("Allocation of GMP funds to the city's mobility projects") == {"GMP": 1}
 
 
 def test_general_mobility_program():

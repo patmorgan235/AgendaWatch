@@ -138,6 +138,15 @@ def _process(doc: Document, store: Store, http: Http, terms, settings: dict, run
         max_per_term=int(settings.get("max_snippets_per_term", 5)),
     )
     scope = f"{doc.city}|{doc.meeting_date}"
+    # Agendas of meetings older than the report window (archive backfills) are stored and
+    # searchable, but their matches aren't news: they don't count as new in this run or the feeds.
+    archive_before = today - timedelta(days=int(settings.get("report_lookback_days", 30)))
+    if doc.meeting_date and doc.meeting_date < archive_before:
+        added = store.add_hits(doc.url, hits, 0, scope, first_seen=f"{doc.meeting_date.isoformat()}T00:00:00")
+        st.read += 1
+        if added:
+            log.info("  + %d archived match(es) in %s %s (%s)", added, doc.city, doc.title, doc.meeting_date)
+        return
     new = store.add_hits(doc.url, hits, run_id, scope)
     st.read += 1   # counted here so a failure above counts as failed only
     st.new_matches += new
@@ -208,11 +217,24 @@ def _apply_health(statuses: list[SourceStatus], health: dict, today: date, defau
             st.stale = old_enough and (today - date.fromisoformat(st.last_new)).days > limit
 
 
-def run(config: dict, backfill_days: int | None = None, http: Http | None = None, today: date | None = None) -> RunResult:
+def select_sources(specs: list[dict], only: list[str] | None) -> list[dict]:
+    """The source specs named in `only` (all of them when it's empty); unknown names are an error."""
+    if not only:
+        return specs
+    names = {s["name"] for s in specs}
+    missing = [n for n in only if n not in names]
+    if missing:
+        raise ValueError(f"No source named {missing} in the config")
+    return [s for s in specs if s["name"] in only]
+
+
+def run(config: dict, backfill_days: int | None = None, http: Http | None = None, today: date | None = None,
+        only: list[str] | None = None) -> RunResult:
+    """`only` limits the run to the named sources (for archive backfills)."""
     settings = config.get("settings", {}) or {}
     terms = compile_terms(config["terms"])
     http = http or make_http(settings)
-    sources = build_sources(config["sources"], http)
+    sources = build_sources(select_sources(config["sources"], only), http)
     real_today = date.today()
     today = today or real_today
     # A run dated another day (tests, backfills) stamps "first seen" on that day too, so lead times

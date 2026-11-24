@@ -57,7 +57,9 @@ class JsonFormatter(logging.Formatter):
 
 
 def run_job(cfg: dict, storage: Storage, today: date | None = None, http=None,
-            backfill_days: int | None = None) -> int:
+            backfill_days: int | None = None, only: list[str] | None = None) -> int:
+    """`only` runs just the named sources and saves the database without publishing the site, since
+    a page built from a partial run would list only those sources. The next full run publishes."""
     settings = cfg.setdefault("settings", {})
     terms = [t if isinstance(t, str) else t["name"] for t in cfg["terms"]]
     t0 = time.time()
@@ -74,7 +76,9 @@ def run_job(cfg: dict, storage: Storage, today: date | None = None, http=None,
 
             if backfill_days:
                 log.info("backfill: looking back %d days this run", backfill_days)
-            res = run(cfg, backfill_days=backfill_days, http=http, today=today)
+            if only:
+                log.info("partial run: only %s; the site is not published", ", ".join(only))
+            res = run(cfg, backfill_days=backfill_days, http=http, today=today, only=only)
 
             retention = settings.get("page_retention_days")
             if retention:
@@ -86,13 +90,20 @@ def run_job(cfg: dict, storage: Storage, today: date | None = None, http=None,
                     store.close()
                 log.info("pruned page text of %d agenda(s) older than %s", pruned, cutoff)
 
-            write_report(res, terms, site, settings.get("site_url"), taxonomy_from_config(cfg))
-            # Save the database before publishing: if publishing fails, the next run republishes;
-            # if saving failed after publishing, the next run would report the same items as new again.
-            storage.put_state(DB_KEY, db)
-            n = storage.publish_site(site)
-            log.info("published %d site file(s); database %.1f MB", n, db.stat().st_size / 1e6,
-                     extra={"fields": {"event": "published", "files": n, "db_mb": round(db.stat().st_size / 1e6, 1)}})
+            if only:
+                storage.put_state(DB_KEY, db)
+                log.info("partial run saved; database %.1f MB", db.stat().st_size / 1e6,
+                         extra={"fields": {"event": "saved_partial", "db_mb": round(db.stat().st_size / 1e6, 1)}})
+                n = 0
+            else:
+                write_report(res, terms, site, settings.get("site_url"), taxonomy_from_config(cfg))
+                # Save the database before publishing: if publishing fails, the next run republishes;
+                # if saving failed after publishing, the next run would report the same items as new again.
+                storage.put_state(DB_KEY, db)
+                n = storage.publish_site(site)
+            if not only:
+                log.info("published %d site file(s); database %.1f MB", n, db.stat().st_size / 1e6,
+                         extra={"fields": {"event": "published", "files": n, "db_mb": round(db.stat().st_size / 1e6, 1)}})
     except LockHeld as exc:
         log.error("another run is still in progress: %s", exc, extra={"fields": {"event": "locked"}})
         return EXIT_LOCKED

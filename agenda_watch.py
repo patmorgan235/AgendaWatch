@@ -44,7 +44,7 @@ def load_config(path: str) -> dict:
 
 
 def cmd_run(args, cfg) -> int:
-    res = run(cfg, backfill_days=args.backfill)
+    res = run(cfg, backfill_days=args.backfill, only=args.only)
     terms = [t if isinstance(t, str) else t["name"] for t in cfg["terms"]]
     from agendawatch.site import taxonomy_from_config
 
@@ -79,7 +79,8 @@ def cmd_job(args, cfg) -> int:
 
     apply_env_overrides(cfg)
     backfill = args.backfill or int(os.environ.get("AGENDAWATCH_BACKFILL_DAYS") or 0) or None
-    return run_job(cfg, storage_from_env(), backfill_days=backfill)
+    only = args.only or [n.strip() for n in (os.environ.get("AGENDAWATCH_ONLY_SOURCES") or "").split(";") if n.strip()]
+    return run_job(cfg, storage_from_env(), backfill_days=backfill, only=only or None)
 
 
 def cmd_search(args, cfg) -> int:
@@ -113,11 +114,16 @@ def main(argv=None) -> int:
     p_run = sub.add_parser("run", help="check agendas and write the daily report")
     p_run.add_argument("--backfill", type=int, metavar="DAYS", help="look back this many days instead of lookback_days")
     p_run.add_argument("--open", action="store_true", help="open the report in your browser when done")
+    p_run.add_argument("--only", action="append", metavar="SOURCE",
+                       help="run only this source (repeatable), e.g. for an archive backfill")
 
     sub.add_parser("check", help="test each source without downloading agendas")
     p_job = sub.add_parser("job", help="hosted run: fetch the database from storage, run, publish the site")
     p_job.add_argument("--backfill", type=int, metavar="DAYS",
                        help="look back this many days this run (or set AGENDAWATCH_BACKFILL_DAYS)")
+    p_job.add_argument("--only", action="append", metavar="SOURCE",
+                       help="run only this source (repeatable; or AGENDAWATCH_ONLY_SOURCES, ';'-separated); "
+                            "saves the database without publishing the site")
 
     p_s = sub.add_parser("search", help="search agendas already downloaded")
     p_s.add_argument("query")
