@@ -23,6 +23,7 @@ settings:
 # Options: case_sensitive, regex (pattern is a regular expression), whole_word,
 #          exclude_if_nearby (skip a match when one of these phrases is within ~150 characters),
 #          exclude_context (skip a match only when one of these regexes covers the match itself),
+#          require_nearby (count a match only when one of these phrases is within ~150 characters),
 #          aliases (other spellings reported as this term: a phrase, or {pattern, regex, case_sensitive}),
 #          tags (group:value — groups used: agency, mode, topic; shown and filterable on the site).
 # Where terms overlap, the longest match wins: "Transit" inside "Dallas Area Rapid Transit" or
@@ -135,6 +136,10 @@ terms:
       - guaranteed maximum
       - construction manager at risk
       - CMAR
+    require_nearby:               # construction contracts also say "GMP Amendment 3" with no other hint;
+      - DART                      # DART's General Mobility Program nearly always has one of these close by
+      - Dallas Area Rapid Transit
+      - mobility
     aliases: [General Mobility Program]
     tags: [agency:DART, topic:funding]
   - name: DART membership
@@ -216,17 +221,25 @@ sources:
   - name: Richardson (video archive)
     section: DART member cities
     city: Richardson
-    type: link_page
-    # Fallback for cloud hosting: cor.net blocks data-center IPs (Akamai). Swagit is expected to
-    # work from Azure but wasn't part of the Phase 0 test; confirm on the first Azure run.
-    # Swagit lists a meeting around when it's held, so alerts from here come late; when
-    # cor.net is readable (e.g. from a home connection) it catches the same items first.
+    type: swagit
+    # Fallback for cloud hosting: cor.net blocks data-center IPs (Akamai). Swagit lists a meeting
+    # around when it's held, so alerts from here come late; when cor.net is readable (e.g. from a
+    # home connection) it catches the same items first. Also the archive back to 2009.
     note: "Fallback for cor.net; agendas appear here around meeting day, so notice is short."
-    urls:
-      - https://richardsontx.new.swagit.com/views/614
-    link_pattern: '/videos/\d+/agenda'
-    link_text_pattern: '^agenda$'
-    max_links: 15
+    host: richardsontx
+    view: 614                       # https://richardsontx.new.swagit.com/views/614
+
+  - name: Irving (video archive)
+    section: DART member cities
+    city: Irving
+    type: swagit
+    # irvingtx.gov is behind a Cloudflare challenge (see Phase 6). Irving's Swagit archive has
+    # agendas from 2009 until July 2025, when Irving stopped posting there: history only.
+    note: "Archive only: Irving's Swagit agendas end July 2025. Current Irving agendas aren't covered yet."
+    stale_after_days: 3650          # the archive is closed, so don't flag it as stale
+    host: irvingtx
+    view: 697
+    tab: meetings                   # https://irvingtx.new.swagit.com/views/697/meetings
 
   - name: Rowlett
     section: DART member cities

@@ -558,6 +558,87 @@ class GranicusSource(Source):
         return list(docs.values())
 
 
+# ---------------------------------------------------------------- Swagit (video archive)
+@dataclass
+class SwagitSource(Source):
+    """A Swagit video archive: https://<host>.new.swagit.com/views/<view>[/<tab>]
+
+    Each archived meeting video can carry its agenda (/videos/<id>/agenda, which redirects to the
+    file). Swagit posts around meeting day, so this is for history, not advance notice. Archives
+    are either one long page (Richardson) or paged ?page=N, newest first (Irving). `until` limits
+    it to meetings before a date, e.g. when the city's own agenda system takes over from there.
+    """
+
+    host: str = ""                   # e.g. "irvingtx" for irvingtx.new.swagit.com
+    view: int = 0                    # archive number (shared across all Swagit sites)
+    tab: str = ""                    # optional tab, e.g. "meetings"
+    include: str | None = None       # keep only meetings whose title matches (regex)
+    exclude: str | None = None       # skip meetings whose title matches (regex)
+    until: str | None = None         # only meetings before this date (YYYY-MM-DD)
+    max_pages: int = 150
+    platform: str = "Swagit"
+
+    def _base(self) -> str:
+        return f"https://{self.host}.new.swagit.com"
+
+    def _archive(self) -> str:
+        return f"{self._base()}/views/{self.view}" + (f"/{self.tab}" if self.tab else "")
+
+    def _default_page(self) -> str:
+        return self._archive()
+
+    _VIDEO = re.compile(r'href="/videos/(\d+)"[^>]*>([^<]+)</a>', re.I)
+    _DATE = re.compile(r"\b([A-Z][a-z]{2,8}\.? \d{1,2}, \d{4})\b")
+
+    def _rows(self, html: str) -> list[tuple[str, str, date, bool]]:
+        """(video id, title, date, has agenda) per table row. Agenda links are sometimes inside an
+        HTML comment, so rows are read as raw text rather than parsed elements."""
+        out = []
+        for row in re.findall(r"<tr\b.*?</tr>", html, re.S | re.I):
+            v = self._VIDEO.search(row)
+            d = self._DATE.search(re.sub(r"<!--.*?-->", " ", row, flags=re.S))
+            if not v or not d:
+                continue
+            when = parse_date(d.group(1))
+            if when is None:
+                continue
+            title = re.sub(r"\s+", " ", BeautifulSoup(v.group(2), "html.parser").get_text()).strip() or "Meeting"
+            out.append((v.group(1), title, when, f"/videos/{v.group(1)}/agenda" in row))
+        return out
+
+    def list_documents(self, start: date, end: date) -> list[Document]:
+        if not self.host or not self.view:
+            raise SourceError("Swagit source needs host and view")
+        until = date.fromisoformat(self.until) if self.until else None
+        inc = re.compile(self.include, re.I) if self.include else None
+        exc = re.compile(self.exclude, re.I) if self.exclude else None
+        docs: dict[str, Document] = {}
+        seen_rows = 0
+        for page in range(1, self.max_pages + 1):
+            url = self._archive() + (f"?page={page}" if page > 1 else "")
+            html = self.http.get_text(url)
+            rows = self._rows(html)
+            if not rows:
+                break
+            seen_rows += len(rows)
+            for vid, title, when, has_agenda in rows:
+                if not has_agenda or not _in_window(when, start, end) or (until and when >= until):
+                    continue
+                if (inc and not inc.search(title)) or (exc and exc.search(title)) or not _body_allowed(title, self.bodies):
+                    continue
+                href = f"{self._base()}/videos/{vid}/agenda"
+                docs.setdefault(href, Document(self.name, self.city, title, when, f"{title} agenda", href, "agenda",
+                                               f"{self._base()}/videos/{vid}"))
+            # Paged archives run newest to oldest: stop once a whole page is older than the window.
+            if max(r[2] for r in rows) < start:
+                break
+            if page == 1 and "page=2" not in html:
+                break                    # a single-page archive
+        if not seen_rows:
+            raise SourceError("No Swagit meeting rows found on the archive page")
+        return list(docs.values())
+
+
 # ---------------------------------------------------------------- CivicWeb
 @dataclass
 class CivicWebSource(Source):
@@ -739,6 +820,8 @@ def build_sources(specs: list[dict], http: Http) -> list[Source]:
             sources.append(DocsPublishedSource(**common, **spec))
         elif kind == "granicus":
             sources.append(GranicusSource(**common, **spec))
+        elif kind == "swagit":
+            sources.append(SwagitSource(**common, **spec))
         elif kind == "civicweb":
             sources.append(CivicWebSource(**common, **spec))
         elif kind == "doc_table":

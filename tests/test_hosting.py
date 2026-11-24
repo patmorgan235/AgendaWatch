@@ -230,3 +230,16 @@ def test_job_twice_through_local_storage(tmp_path):
     # a run that finds the lock held exits without touching anything
     with storage.lock():
         assert run_job(json.loads(json.dumps(cfg)), storage, today=TODAY, http=FakeHttp(routes(pdf))) == EXIT_LOCKED
+
+
+def test_partial_job_saves_the_database_without_publishing(tmp_path):
+    cfg = config(tmp_path)
+    storage = LocalStorage(tmp_path / "hosted")
+    pdf = make_pdf([AGENDA_P1, AGENDA_P2])
+    assert run_job(json.loads(json.dumps(cfg)), storage, today=TODAY, http=FakeHttp(routes(pdf)), only=["Dallas"]) == EXIT_OK
+    hosted = tmp_path / "hosted"
+    assert (hosted / "state/agenda_watch.db").exists()
+    assert not (hosted / "site/data.json").exists()       # a page built from one source would list only that source
+    store = Store(hosted / "state/agenda_watch.db")
+    assert {r["city"] for r in store.db.execute("SELECT DISTINCT city FROM documents")} == {"Dallas"}
+    store.close()
