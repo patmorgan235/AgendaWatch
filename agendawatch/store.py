@@ -210,6 +210,16 @@ class Store:
             (start.isoformat(), end.isoformat(), start.isoformat()),
         ).fetchall()
 
+    def matches_before(self, before: date) -> list[sqlite3.Row]:
+        """Every match for meetings dated before `before`: the archive behind the report window."""
+        return self.db.execute(
+            """SELECT m.*, d.source, d.city, d.body, d.meeting_date, d.title, d.kind, d.detail_url
+               FROM matches m JOIN documents d ON d.url = m.url
+               WHERE d.meeting_date IS NOT NULL AND d.meeting_date < ?
+               ORDER BY d.meeting_date, d.city, d.body, m.term, m.page""",
+            (before.isoformat(),),
+        ).fetchall()
+
     def prune_pages(self, before: date) -> int:
         """Drop stored page text for agendas of meetings before `before` (matches are kept).
         Returns how many agendas were pruned. Shrinks the file with VACUUM when anything went."""

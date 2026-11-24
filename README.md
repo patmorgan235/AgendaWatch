@@ -140,6 +140,8 @@ The page shows **every** mention for meetings in the report window (30 days back
 
 The **Cities** view lists every city, county and agency being watched, by section, with a link to its own agenda page, whether it was read in the last run, how many meetings mention transit (and the next upcoming one), what they mention, how much notice it usually gives, and calendar/RSS links. "Show meetings" opens the list filtered to that city.
 
+The **Archive** view holds meetings older than the report window, one year at a time (`archive/<year>.json`, loaded when a year is opened). The same filters work there, except "Upcoming" and "New". Each city's card in the Cities view links to its archive.
+
 Each meeting shows how many days away it is, which terms and tags it mentions, the matching passages with a link to the right page of the PDF, and links to the agenda, packet and meeting page, plus "Add to calendar" (Google or `.ics`).
 
 **Sources** at the bottom (or `index.html#sources`) is the health check:
@@ -208,7 +210,7 @@ Exit codes: `0` success (even if some sources couldn't be read; they're listed i
 
 **Archive backfills.** To load old agendas for some sources without re-reading all of them, run only those sources with a long backfill, e.g. `python agenda_watch.py run --only "Irving (video archive)" --backfill 1825`, or for the hosted job `--only` (repeatable) / `AGENDAWATCH_ONLY_SOURCES` (`;`-separated). A partial hosted run saves the database but doesn't publish the site; the next full run does. Matches on meetings older than `report_lookback_days` are stored and searchable but aren't treated as news: they don't show as new or appear in the feeds.
 
-To keep the hosted database small, set `page_retention_days` (e.g. 90): stored page text for older meetings is dropped and the file compacted. Matches are always kept, and dropped agendas aren't downloaded again.
+`page_retention_days` (e.g. 90) drops stored page text for older meetings and compacts the file. Matches are kept and dropped agendas aren't downloaded again, but new or changed terms can't be applied to them. The hosted job keeps everything (0), because the archive relies on re-matching old agendas; the text is small (about 12 MB per 650 agendas).
 
 ## Changing terms or cities
 
