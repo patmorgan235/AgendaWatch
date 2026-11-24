@@ -134,3 +134,19 @@ def test_archive_is_written_per_year_and_indexed(tmp_path):
     assert [m["date"] for m in year["meetings"]] == ["2022-12-12", "2022-03-03"]   # newest first
     assert all(not m["new"] and "add" not in m for m in year["meetings"])
     assert "rail" in data["taxonomy"]["groups"]["mode"]                         # archive-only tag still filterable
+
+
+def test_archive_sources_run_only_when_named():
+    specs = [{"name": "A"}, {"name": "B (video archive)", "archive": True}]
+    assert [s["name"] for s in select_sources(specs, None)] == ["A"]
+    assert [s["name"] for s in select_sources(specs, ["B (video archive)"])] == ["B (video archive)"]
+
+
+def test_several_tabs():
+    http = FakeHttp({
+        f"{BASE}/views/9/city-council": page(row(2, "City Council", "Mar 01, 2025")),
+        f"{BASE}/views/9/planning-and-zoning": page(row(1, "Planning and Zoning", "Feb 01, 2025")),
+    })
+    s = source(http, tab=["city-council", "planning-and-zoning"])
+    assert sorted(d.body for d in s.list_documents(date(2025, 1, 1), date(2025, 12, 31))) == ["City Council", "Planning and Zoning"]
+    assert s.page_url() == f"{BASE}/views/9/city-council"

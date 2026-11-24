@@ -539,3 +539,210 @@ sources:
   # Not read (see README): Grand Prairie, The Colony, Burleson, Prosper (Municode Meetings
   # refuses the tool / Cloudflare challenge); Allen, Saginaw (AgendaLink API needs an embedded
   # token); Arlington (agenda list loads by script); Rockwall, Corinth (site unreachable).
+
+  # ------------------------------------------------------------ Grand Prairie (Swagit)
+  # Grand Prairie's agenda site (Municode Meetings) blocks automated requests. Its Swagit archive
+  # is current and has agendas back to 2007, posted around meeting day: late notice, but covered.
+  - name: Grand Prairie
+    section: Eligible to join a transit agency
+    type: swagit
+    note: "Swagit: agendas appear around meeting day, so notice is short."
+    host: grandprairietx
+    view: 515                       # https://grandprairietx.new.swagit.com/views/515
+
+  # ------------------------------------------------------------ Swagit video archives (history)
+  # archive: true -> skipped by daily runs; run on purpose with `--only "<name>"` (or the job's
+  # AGENDAWATCH_ONLY_SOURCES) and a long --backfill. until: the city's own source covers meetings
+  # from 2026-10-24 (the hosted database's start), so these only add the years before that.
+  # The view number is the city's archive: https://<host>.swagit.com/ redirects to /views/<view>.
+  - name: Dallas (video archive)
+    city: Dallas
+    section: DART member cities
+    type: swagit
+    archive: true
+    until: "2026-10-24"
+    host: dallastx
+    view: 113
+
+  - name: Plano (video archive)
+    city: Plano
+    section: DART member cities
+    type: swagit
+    archive: true
+    until: "2026-10-24"
+    host: planotx
+    view: 527
+    tab: [city-council, planning-and-zoning]
+
+  - name: Rowlett (video archive)
+    city: Rowlett
+    section: DART member cities
+    type: swagit
+    archive: true
+    until: "2026-10-24"
+    host: rowletttx
+    view: 71
+
+  - name: Garland (video archive)
+    city: Garland
+    section: DART member cities
+    type: swagit
+    archive: true
+    until: "2026-10-24"
+    host: garlandtx
+    view: 213
+
+  - name: Carrollton (video archive)
+    city: Carrollton
+    section: DART member cities
+    type: swagit
+    archive: true
+    until: "2026-10-24"
+    host: carrolltontx
+    view: 864
+
+  - name: Addison (video archive)
+    city: Addison
+    section: DART member cities
+    type: swagit
+    archive: true
+    until: "2026-10-24"
+    host: addisontx
+    view: 128
+
+  - name: Denton (video archive)
+    city: Denton
+    section: DCTA member cities
+    type: swagit
+    archive: true
+    until: "2026-10-24"
+    host: dentontx
+    view: 5
+
+  - name: Lewisville (video archive)
+    city: Lewisville
+    section: DCTA member cities
+    type: swagit
+    archive: true
+    until: "2026-10-24"
+    host: lewisvilletx
+    view: 760
+
+  - name: Highland Village (video archive)
+    city: Highland Village
+    section: DCTA member cities
+    type: swagit
+    archive: true
+    until: "2026-10-24"
+    host: highlandvillagetx
+    view: 7
+
+  - name: Collin County (video archive)
+    city: Collin County
+    section: Counties
+    type: swagit
+    archive: true
+    until: "2026-10-24"
+    host: collincountytx
+    view: 342
+
+  - name: Coppell (video archive)
+    city: Coppell
+    section: Eligible to join a transit agency
+    type: swagit
+    archive: true
+    until: "2026-10-24"
+    host: coppelltx
+    view: 943
+
+  - name: Mesquite (video archive)
+    city: Mesquite
+    section: Eligible to join a transit agency
+    type: swagit
+    archive: true
+    until: "2026-10-24"
+    host: mesquitetx
+    view: 606
+
+  - name: DeSoto (video archive)
+    city: DeSoto
+    section: Eligible to join a transit agency
+    type: swagit
+    archive: true
+    until: "2026-10-24"
+    host: desototx
+    view: 590
+
+  - name: Benbrook (video archive)
+    city: Benbrook
+    section: Eligible to join a transit agency
+    type: swagit
+    archive: true
+    until: "2026-10-24"
+    host: benbrooktx
+    view: 132
+
+  - name: Cedar Hill (video archive)
+    city: Cedar Hill
+    section: Eligible to join a transit agency
+    type: swagit
+    archive: true
+    until: "2026-10-24"
+    host: cedarhilltx
+    view: 182
+
+  - name: Little Elm (video archive)
+    city: Little Elm
+    section: Eligible to join a transit agency
+    type: swagit
+    archive: true
+    until: "2026-10-24"
+    host: littleelmtx
+    view: 641
+    tab: [town-council]
+
+  - name: Euless (video archive)
+    city: Euless
+    section: Eligible to join a transit agency
+    type: swagit
+    archive: true
+    until: "2026-10-24"
+    host: eulesstx
+    view: 294
+
+  - name: Sachse (video archive)
+    city: Sachse
+    section: Eligible to join a transit agency
+    type: swagit
+    archive: true
+    until: "2026-10-24"
+    host: sachsetx
+    view: 545
+
+  - name: Flower Mound (video archive)
+    city: Flower Mound
+    section: Eligible to join a transit agency
+    type: swagit
+    archive: true
+    until: "2026-10-24"
+    host: flowermoundtx
+    view: 587
+    tab: [town-council-archive, planning-and-zoning-archive, other-meetings-archive]
+
+  - name: Celina (video archive)
+    city: Celina
+    section: Eligible to join a transit agency
+    type: swagit
+    archive: true
+    until: "2026-10-24"
+    host: celinatx
+    view: 93
+
+  - name: Murphy (video archive)
+    city: Murphy
+    section: Eligible to join a transit agency
+    type: swagit
+    archive: true
+    until: "2026-10-24"
+    host: murphytx
+    view: 170
