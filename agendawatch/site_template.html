@@ -37,6 +37,9 @@ header p{margin:0;color:var(--muted)}
 .activechip{font:inherit;font-size:.8rem;background:var(--chip);color:var(--chipink);border:1px solid var(--chipink);border-radius:999px;padding:1px 8px 1px 10px;cursor:pointer}
 .activechip span{margin-left:4px;font-weight:700}
 .controls.cities .quick,.controls.cities .filterbtn,.controls.cities .panel,.controls.cities .active{display:none}
+.controls.archive #f-upcoming-label,.controls.archive #f-new-wrap{display:none}
+.years{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:18px 0 4px}
+.years .termbtn small{color:var(--muted);font-weight:400;margin-left:4px}
 .citygrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,270px),1fr));gap:12px}
 .city{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;scroll-margin-top:calc(var(--bar-h, 140px) + 12px)}
 .city h3{margin:0;font-size:1.02rem}
@@ -135,12 +138,13 @@ footer p{margin:4px 0}
       <button type="button" class="termbtn" id="v-list" aria-pressed="true">List</button>
       <button type="button" class="termbtn" id="v-cal" aria-pressed="false">Calendar</button>
       <button type="button" class="termbtn" id="v-cities" aria-pressed="false">Cities</button>
+      <button type="button" class="termbtn" id="v-archive" aria-pressed="false">Archive</button>
     </div>
     <button type="button" class="filterbtn" id="f-toggle" aria-expanded="false" aria-controls="f-panel">Filters<span class="count" id="f-count" hidden></span></button>
   </div>
   <div class="quick">
     <label id="f-upcoming-label"><input type="checkbox" id="f-upcoming" checked> Upcoming only</label>
-    <label><input type="checkbox" id="f-new"> <span id="f-new-label">New only</span></label>
+    <label id="f-new-wrap"><input type="checkbox" id="f-new"> <span id="f-new-label">New only</span></label>
     <label title="Mentions near words like agreement, contract, resolution, public hearing, briefing"><input type="checkbox" id="f-actions"> Action items only</label>
   </div>
   <div class="panel" id="f-panel" hidden>
@@ -224,7 +228,10 @@ footer p{margin:4px 0}
     if (n === 0) return "today";
     if (n === 1) return "tomorrow";
     if (n === -1) return "yesterday";
-    return n > 0 ? "in " + n + " days" : Math.abs(n) + " days ago";
+    var a = Math.abs(n);
+    // archive meetings: months or years rather than "1442 days ago"
+    var span = a < 60 ? a + " days" : a < 730 ? Math.round(a / 30.4) + " months" : Math.round(a / 365.25) + " years";
+    return n > 0 ? "in " + span : span + " ago";
   }
   function isUpcoming(m) { return !m.date || parseDay(m.date) >= localToday(); }
   function pad(n) { return (n < 10 ? "0" : "") + n; }
@@ -328,7 +335,7 @@ footer p{margin:4px 0}
   }
   var VIEW_KEY = "agendawatch.view";
   var vList = document.getElementById("v-list"), vCal = document.getElementById("v-cal"),
-      vCities = document.getElementById("v-cities"),
+      vCities = document.getElementById("v-cities"), vArchive = document.getElementById("v-archive"),
       fUpLabel = document.getElementById("f-upcoming-label");
   var view = "list";            // "list" | "calendar"
   var calMonth = firstOfMonth(localToday());
@@ -340,10 +347,12 @@ footer p{margin:4px 0}
   var maxMonth = firstOfMonth(new Date(Math.max(parseDay(DATA.window.end), localToday())));
   function clampMonth(d) { return d < minMonth ? minMonth : d > maxMonth ? maxMonth : d; }
   function setView(v) {
-    view = v === "calendar" || v === "cities" ? v : "list";
+    view = v === "calendar" || v === "cities" || v === "archive" ? v : "list";
     vList.setAttribute("aria-pressed", view === "list" ? "true" : "false");
     vCal.setAttribute("aria-pressed", view === "calendar" ? "true" : "false");
     vCities.setAttribute("aria-pressed", view === "cities" ? "true" : "false");
+    vArchive.setAttribute("aria-pressed", view === "archive" ? "true" : "false");
+    document.querySelector(".controls").classList.toggle("archive", view === "archive");
     // In the Cities view only the search box applies (it filters the cities).
     document.querySelector(".controls").classList.toggle("cities", view === "cities");
     fQ.placeholder = view === "cities" ? "Search cities and agencies…" : "Search snippets, cities, meetings…";
@@ -351,6 +360,13 @@ footer p{margin:4px 0}
   vList.addEventListener("click", function () { setView("list"); pref(VIEW_KEY, "list"); update(); });
   vCal.addEventListener("click", function () { setView("calendar"); pref(VIEW_KEY, "calendar"); update(); });
   vCities.addEventListener("click", function () { setView("cities"); pref(VIEW_KEY, "cities"); update(); });
+  vArchive.addEventListener("click", function () { setView("archive"); update(); });   // not remembered: it loads files
+  var ARCHIVE = DATA.archive || { years: [], cities: {} };
+  if (!ARCHIVE.years.length) vArchive.hidden = true;
+  var archYear = "", archCache = {}, archLoading = "", archError = "";
+  function meetingsNow() {
+    return view === "archive" ? ((archCache[archYear] || {}).meetings || []) : DATA.meetings;
+  }
 
   DATA.sections.forEach(function (s) {
     if (DATA.meetings.some(function (m) { return m.section === s; })) fSec.appendChild(el("option", { value: s, text: s }));
@@ -358,10 +374,11 @@ footer p{margin:4px 0}
   function fillCities() {
     var keep = fCity.value, seen = {};
     while (fCity.options.length > 1) fCity.remove(1);
-    DATA.meetings.filter(function (m) { return !fSec.value || m.section === fSec.value; })
+    meetingsNow().filter(function (m) { return !fSec.value || m.section === fSec.value; })
       .map(function (m) { return m.city; }).sort().forEach(function (c) {
         if (!seen[c]) { seen[c] = 1; fCity.appendChild(el("option", { value: c, text: c })); }
       });
+    if (pendingCity && seen[pendingCity] && view === "archive") { keep = pendingCity; pendingCity = ""; }
     fCity.value = seen[keep] ? keep : "";
   }
   DATA.terms.forEach(function (t) {
@@ -396,6 +413,7 @@ footer p{margin:4px 0}
   function readQuery() {
     var q = new URLSearchParams(location.search);
     setView(q.get("view") || pref(VIEW_KEY) || "list");
+    if (/^\d{4}$/.test(q.get("year") || "")) archYear = q.get("year");
     if (/^\d{4}-\d{2}-\d{2}$/.test(q.get("day") || "")) {
       calDay = q.get("day");
       calMonth = firstOfMonth(parseDay(calDay));
@@ -424,6 +442,7 @@ footer p{margin:4px 0}
   function writeQuery() {
     var q = new URLSearchParams();
     if (view === "cities") q.set("view", "cities");
+    if (view === "archive") { q.set("view", "archive"); if (archYear) q.set("year", archYear); }
     if (view === "calendar") {
       q.set("view", "calendar");
       q.set("month", isoOf(calMonth).slice(0, 7));
@@ -463,8 +482,9 @@ footer p{margin:4px 0}
       });
     }
     var out = [];
-    DATA.meetings.forEach(function (m) {
-      if (!ignoreUpcoming && fUp.checked && !isUpcoming(m)) return;
+    var arch = view === "archive";
+    meetingsNow().forEach(function (m) {
+      if (!ignoreUpcoming && !arch && fUp.checked && !isUpcoming(m)) return;
       if (fSec.value && m.section !== fSec.value) return;
       if (fCity.value && m.city !== fCity.value) return;
       var meetText = (m.city + " " + m.body).toLowerCase();
@@ -472,7 +492,7 @@ footer p{margin:4px 0}
         if (terms.length && terms.indexOf(x.term) < 0) return false;
         if (groups.length && !tagsMatch(x)) return false;
         if (fAct.checked && !(x.actions && x.actions.length)) return false;
-        if (fNew.checked && !isNew(x)) return false;
+        if (!arch && fNew.checked && !isNew(x)) return false;
         return !needle || meetText.indexOf(needle) >= 0 || hitMatches(x, needle);
       });
       if (hits.length) out.push({ m: m, hits: hits });
@@ -542,6 +562,7 @@ footer p{margin:4px 0}
     var root = document.getElementById("results");
     root.textContent = "";
     if (view === "cities") renderCities(root);
+    else if (view === "archive") renderArchive(root);
     else if (cal) renderCalendar(root, items);
     else renderList(root, items);
     renderFeeds();
@@ -659,6 +680,12 @@ footer p{margin:4px 0}
           health.push(ld <= 0 ? "usually posted on or after the meeting day" : "usually posted " + plural(ld, "day") + " ahead");
         }
         if (health.length) parts.push(el("p", { class: "row", text: health.join(" · ").replace(/^./, function (ch) { return ch.toUpperCase(); }) }));
+        var ar = ARCHIVE.cities && ARCHIVE.cities[c];
+        if (ar) {
+          var ab = el("button", { type: "button", class: "linkbtn", text: "Archive: " + plural(ar.meetings, "meeting") + " since " + ar.since.slice(0, 4) });
+          ab.addEventListener("click", function () { showArchive(c); });
+          parts.push(el("p", { class: "row" }, [ab]));
+        }
         var f = feedOf[c];
         if (f) {
           var fl = [];
@@ -679,6 +706,71 @@ footer p{margin:4px 0}
     document.getElementById("summary").textContent = plural(cities.length, "city or agency", "cities and agencies") +
       " · " + withUpcoming + " with upcoming transit items";
   }
+  // ---- archive: past meetings, one year at a time --------------------------
+  function loadYear(y) {
+    var info = ARCHIVE.years.filter(function (x) { return x.year === y; })[0];
+    if (!info || archCache[y] || archLoading === y) return;
+    archLoading = y; archError = "";
+    fetch(info.file).then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    }).then(function (d) {
+      archCache[y] = d;
+    }).catch(function () {
+      archError = location.protocol === "file:"
+        ? "The archive loads from the website; open the hosted page to browse it."
+        : "Couldn’t load the " + y + " archive. Try again in a moment.";
+    }).then(function () {
+      archLoading = "";
+      if (view === "archive") update();
+    });
+  }
+  function renderArchive(root) {
+    if (!archYear || !ARCHIVE.years.some(function (x) { return x.year === archYear; })) archYear = (ARCHIVE.years[0] || {}).year || "";
+    var bar = el("div", { class: "years", role: "group", "aria-label": "Year" });
+    ARCHIVE.years.forEach(function (x) {
+      var b = el("button", { type: "button", class: "termbtn", "aria-pressed": x.year === archYear ? "true" : "false" },
+        [x.year, el("small", { text: String(x.meetings) })]);
+      b.title = plural(x.meetings, "meeting") + " · " + plural(x.mentions, "mention");
+      b.addEventListener("click", function () { archYear = x.year; update(); });
+      bar.appendChild(b);
+    });
+    root.appendChild(bar);
+    root.appendChild(el("p", { class: "note", text: "Meetings before " + fmtDay(ARCHIVE.before) +
+      " whose agendas mention a watched term. Newer meetings are in the List view." }));
+    if (!archCache[archYear]) {
+      loadYear(archYear);
+      root.appendChild(el("div", { class: "empty", text: archError || "Loading " + archYear + "…" }));
+      document.getElementById("summary").textContent = archYear;
+      return;
+    }
+    var items = filtered(true).sort(function (a, b) { return a.m.date < b.m.date ? 1 : a.m.date > b.m.date ? -1 : 0; });
+    document.getElementById("summary").textContent = archYear + ": " + plural(items.length, "meeting") + " · " + plural(countHits(items), "mention");
+    if (!items.length) root.appendChild(el("div", { class: "empty", text: "No meetings in " + archYear + " match these filters." }));
+    var sections = DATA.sections.slice();
+    items.forEach(function (it) { if (sections.indexOf(it.m.section) < 0) sections.push(it.m.section); });
+    sections.forEach(function (sec) {
+      var inSec = items.filter(function (it) { return it.m.section === sec; });
+      if (!inSec.length) return;
+      root.appendChild(el("h2", { text: sec }));
+      inSec.forEach(function (it) { root.appendChild(card(it)); });
+    });
+  }
+  function showArchive(city) {
+    setView("archive");
+    fSec.value = ""; fQ.value = "";
+    Object.keys(activeTags).forEach(function (k) { activeTags[k] = false; });
+    Object.keys(activeTerms).forEach(function (k) { activeTerms[k] = false; });
+    Array.prototype.forEach.call(fPanel.querySelectorAll("button[aria-pressed]"), function (b) { b.setAttribute("aria-pressed", "false"); });
+    fAct.checked = false;
+    // open the newest year that has this city; the city filter is applied once that year's file loads
+    var yrs = (ARCHIVE.cities[city] || {}).years || [];
+    if (yrs.length) archYear = yrs[0];
+    pendingCity = city;
+    update();
+    window.scrollTo(0, 0);
+  }
+  var pendingCity = "";
   function renderList(root, items) {
     var nHits = countHits(items);
     document.getElementById("summary").textContent = plural(items.length, "meeting") + " · " + plural(nHits, "mention");

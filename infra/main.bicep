@@ -31,8 +31,8 @@ param siteUrl string = ''
 @description('Custom domain served through Cloudflare, e.g. agendas.urbancivic.cloud. Registered on the storage account with indirect (asverify) validation, so the CNAME "asverify.<domain>" → "asverify.<storage>.blob.core.windows.net" (not proxied) must exist before deploying. Empty = none.')
 param customDomain string = ''
 
-@description('Drop stored page text for meetings older than this many days (0 = keep everything).')
-param pageRetentionDays int = 90
+@description('Drop stored page text for meetings older than this many days (0 = keep everything). Kept at 0 for the multi-year archive: re-matching after term changes needs the text, and it is small (~12 MB per 650 agendas).')
+param pageRetentionDays int = 0
 
 @description('GitHub repository (owner/name) allowed to deploy via OIDC.')
 param githubRepo string = 'patmorgan235/AgendaWatch'

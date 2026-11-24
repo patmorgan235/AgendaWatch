@@ -55,15 +55,11 @@ def _action_matchers(taxonomy: dict | None) -> list[tuple[str, re.Pattern]]:
     return out
 
 
-def build_data(res: RunResult, terms: list[str], site_url: str | None = None, taxonomy: dict | None = None) -> dict:
-    """`taxonomy` (see taxonomy_from_config) adds tags and action tags to each mention. Tags are
-    applied here, when the report is built, so changing them in the config re-tags everything."""
-    today = res.today or date.today()
-    tag_map = (taxonomy or {}).get("tags") or {}
-    action_matchers = _action_matchers(taxonomy)
-    section_of = {s.name: s.section or OTHER for s in res.statuses}
+def _meetings(rows, today: date, section_of: dict, tag_map: dict, action_matchers, run_id: int | None,
+              base: str | None, with_calendar: bool = True) -> list[dict]:
+    """Group match rows into meetings, each with its documents, mentions, tags and action tags."""
     meetings: "OrderedDict[str, dict]" = OrderedDict()
-    for r in res.window_matches:
+    for r in rows:
         mid = _meeting_id(r["source"], r["body"] or "", r["meeting_date"])
         m = meetings.get(mid)
         if m is None:
@@ -89,14 +85,13 @@ def build_data(res: RunResult, terms: list[str], site_url: str | None = None, ta
             "hit": r["hit"],
             "after": r["after"],
             "first_seen": r["first_seen"],
-            "new": r["run_id"] == res.run_id,
+            "new": bool(run_id) and r["run_id"] == run_id,
             "doc": r["url"],
             "link": _page_link(r["url"], r["page"], r["kind"]),
             "tags": list(tag_map.get(r["term"], [])),
             "actions": [name for name, rx in action_matchers
                         if rx.search(f"{r['before']} {r['hit']} {r['after']}")],
         })
-    base = (site_url or "").rstrip("/") or None
     out = []
     for m in meetings.values():
         m["documents"] = list(m["documents"].values())
@@ -105,9 +100,54 @@ def build_data(res: RunResult, terms: list[str], site_url: str | None = None, ta
         m["actions"] = sorted({a for x in m["matches"] for a in x["actions"]})
         m["first_seen"] = min(x["first_seen"] for x in m["matches"])
         m["new"] = any(x["new"] for x in m["matches"])
-        if m["date"]:
+        if m["date"] and with_calendar:
             m["add"] = {"ics": meeting_ics_path(m), "google": google_add_url(m, base)}
         out.append(m)
+    return out
+
+
+def _archive_meetings(res: RunResult, section_of: dict, taxonomy: dict | None) -> list[dict]:
+    tag_map = (taxonomy or {}).get("tags") or {}
+    return _meetings(res.archive_matches, res.today or date.today(), section_of, tag_map,
+                     _action_matchers(taxonomy), None, None, with_calendar=False)
+
+
+def archive_index(res: RunResult, section_of: dict) -> dict:
+    """Years in the archive with meeting and mention counts (overall and per city), for the page.
+    Built from match rows directly, so it's cheap enough to embed in index.html."""
+    years: dict[str, dict] = {}
+    cities: dict[str, dict] = {}
+    seen = set()
+    for r in res.archive_matches:
+        y = r["meeting_date"][:4]
+        key = (r["source"], r["body"] or "", r["meeting_date"])
+        yd = years.setdefault(y, {"year": y, "meetings": 0, "mentions": 0, "file": f"archive/{y}.json"})
+        cd = cities.setdefault(r["city"], {"meetings": 0, "since": r["meeting_date"], "years": []})
+        yd["mentions"] += 1
+        if key not in seen:
+            seen.add(key)
+            yd["meetings"] += 1
+            cd["meetings"] += 1
+            cd["since"] = min(cd["since"], r["meeting_date"])
+            if y not in cd["years"]:
+                cd["years"].append(y)
+    for cd in cities.values():
+        cd["years"].sort(reverse=True)
+    return {"before": (res.report_start or res.start).isoformat(),
+            "years": [years[y] for y in sorted(years, reverse=True)], "cities": cities}
+
+
+def build_data(res: RunResult, terms: list[str], site_url: str | None = None, taxonomy: dict | None = None) -> dict:
+    """`taxonomy` (see taxonomy_from_config) adds tags and action tags to each mention. Tags are
+    applied here, when the report is built, so changing them in the config re-tags everything."""
+    today = res.today or date.today()
+    tag_map = (taxonomy or {}).get("tags") or {}
+    action_matchers = _action_matchers(taxonomy)
+    section_of = {s.name: s.section or OTHER for s in res.statuses}
+    base = (site_url or "").rstrip("/") or None
+    out = _meetings(res.window_matches, today, section_of, tag_map, action_matchers, res.run_id, base)
+    # Tags in recent meetings or the archive, so the tag filters work in both views.
+    present = {t for m in out for t in m["tags"]} | {t for r in res.archive_matches for t in tag_map.get(r["term"], [])}
     sources = [{
         "name": s.name, "city": s.city, "section": s.section or OTHER, "platform": s.platform,
         "listed": s.listed, "read": s.read, "unchanged": s.unchanged, "skipped": s.skipped,
@@ -125,7 +165,7 @@ def build_data(res: RunResult, terms: list[str], site_url: str | None = None, ta
         "terms": terms,
         # Tag groups (agency, mode, topic …) and action tags present in this report, for the filters.
         "taxonomy": {
-            "groups": {g: sorted({t.split(":", 1)[1] for m in out for t in m["tags"] if t.split(":", 1)[0] == g})
+            "groups": {g: sorted({t.split(":", 1)[1] for t in present if t.split(":", 1)[0] == g})
                        for g in dict.fromkeys(t.split(":", 1)[0] for v in tag_map.values() for t in v)},
             "actions": [name for name, _ in action_matchers],
         },
@@ -133,6 +173,7 @@ def build_data(res: RunResult, terms: list[str], site_url: str | None = None, ta
         "site_url": base,
         "meetings": out,
         "sources": sources,
+        "archive": archive_index(res, section_of),
         "feeds": feed_list(res, base),
     }
 
@@ -388,6 +429,17 @@ def write_site(res: RunResult, terms: list[str], out_dir: str | Path, site_url: 
     (out / "data.json").write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
     (out / "feed.xml").write_text(render_atom(data), encoding="utf-8")
     _write_ics(out / "upcoming.ics", render_ics(data))
+    # The archive: one file per year, loaded by the page when that year is opened.
+    section_of = {s.name: s.section or OTHER for s in res.statuses}
+    by_year: dict[str, list] = {}
+    for m in _archive_meetings(res, section_of, taxonomy):
+        by_year.setdefault(m["date"][:4], []).append(m)
+    (out / "archive").mkdir(exist_ok=True)
+    for y, ms in by_year.items():
+        ms.sort(key=lambda m: (m["date"], m["city"]), reverse=True)
+        (out / "archive" / f"{y}.json").write_text(json.dumps({"year": y, "meetings": ms}, ensure_ascii=False),
+                                                     encoding="utf-8")
+    (out / "archive" / "index.json").write_text(json.dumps(data["archive"], ensure_ascii=False), encoding="utf-8")
     write_feeds(out, data, res.retired_feeds)
     # One file per meeting, for "Add to calendar → .ics". Old meetings' files are left in place:
     # dated snapshot pages still link to them.

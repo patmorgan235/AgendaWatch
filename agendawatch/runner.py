@@ -53,6 +53,7 @@ class RunResult:
     upcoming: list
     previous_run: str | None
     window_matches: list = field(default_factory=list)   # every match for meetings in report_start..end
+    archive_matches: list = field(default_factory=list)  # every match for meetings before report_start
     report_start: date | None = None     # the report shows meetings from here (≤ start; see report_lookback_days)
     run_started: str | None = None
     today: date | None = None
@@ -321,6 +322,7 @@ def run(config: dict, backfill_days: int | None = None, http: Http | None = None
             upcoming=store.upcoming_with_matches(today),
             previous_run=store.previous_run_time(run_id),
             window_matches=window,
+            archive_matches=store.matches_before(report_start),
             report_start=report_start,
             run_started=store.run_started(run_id),
             today=today,

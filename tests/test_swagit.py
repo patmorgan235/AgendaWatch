@@ -100,3 +100,37 @@ def test_archive_matches_are_stored_but_not_news(tmp_path):
 def test_only_rejects_unknown_names():
     with pytest.raises(ValueError, match="No source named"):
         select_sources([{"name": "A"}], ["B"])
+
+
+def test_archive_is_written_per_year_and_indexed(tmp_path):
+    import json
+
+    from agendawatch.report import write_report
+    from agendawatch.site import taxonomy_from_config
+
+    today = date(2026, 11, 23)
+    c = cfg(tmp_path)
+    c["terms"] = [{"name": "DART", "case_sensitive": True, "tags": ["agency:DART"]},
+                  {"name": "Silver Line", "tags": ["mode:rail"]}]
+    http = FakeHttp({
+        f"{BASE}/views/9": page(row(3, "City Council", "Nov 18, 2026"), row(2, "City Council", "Dec 12, 2022"),
+                                row(1, "City Council", "Mar 03, 2022")),
+        f"{BASE}/videos/3/agenda": make_pdf(["Item 4. DART bus stop agreement"]),
+        f"{BASE}/videos/2/agenda": make_pdf(["Item 2. Silver Line alignment resolution"]),
+        f"{BASE}/videos/1/agenda": make_pdf(["Item 7. DART interlocal agreement"]),
+    })
+    run(c, backfill_days=2000, http=http, today=today, only=["City (video archive)"])   # the archive backfill
+    c["sources"] = c["sources"][:1]
+    res = run(c, http=http, today=today)                                               # then a normal daily run
+    out = tmp_path / "site"
+    write_report(res, ["DART", "Silver Line"], out, taxonomy=taxonomy_from_config(c))
+    data = json.loads((out / "data.json").read_text())
+    assert [m["date"] for m in data["meetings"]] == ["2026-11-18"]               # the page: recent only
+    idx = json.loads((out / "archive/index.json").read_text())
+    assert idx == data["archive"]
+    assert [(y["year"], y["meetings"]) for y in idx["years"]] == [("2022", 2)]
+    assert idx["cities"]["City"] == {"meetings": 2, "since": "2022-03-03", "years": ["2022"]}
+    year = json.loads((out / "archive/2022.json").read_text())
+    assert [m["date"] for m in year["meetings"]] == ["2022-12-12", "2022-03-03"]   # newest first
+    assert all(not m["new"] and "add" not in m for m in year["meetings"])
+    assert "rail" in data["taxonomy"]["groups"]["mode"]                         # archive-only tag still filterable

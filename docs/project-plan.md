@@ -258,6 +258,20 @@ Re-matching the hosted database with the new list: 232 mentions across 25 terms;
 
 **Done when:** a word not on the term list can be found in the current window's agendas, and the filters above work together and survive a shared link.
 
+### Phase 7a — Multi-year archive (in progress)
+
+Goal: five years of transit items, browsable on the site. Most cities post meeting videos to Swagit with the agenda attached, going back to about 2009, on a public file server (no bot blocking).
+
+- [x] `swagit` source type; Richardson's fallback switched to it; Irving archive added (Irving's Swagit ends July 2025).
+- [x] `--only` partial runs for backfills (save the database, don't publish); archive matches aren't news.
+- [x] GMP false positives found by the pilot: spacing-insensitive exclusions, `require_nearby`.
+- [x] Hosted runs keep all agenda text (`page_retention_days` 0), so new terms re-check the archive.
+- [ ] Richardson and Irving backfill to Jan 2021 on Azure (started Nov 23).
+- [x] **Archive view** on the site: one JSON file per year, loaded on demand; filters work; city cards link to it.
+- [ ] Find Swagit archive numbers (`/views/N`) for the other cities (about 29, including Grand Prairie and Allen, not covered today), then backfill each with `--only`.
+- [ ] Backfill the cities' own systems where they reach back (Legistar, CivicClerk, CivicWeb, Granicus, Docs Published), where Swagit is missing or lacks packets.
+- [ ] Full-text search over the archive (Phase 7).
+
 ### Phase 8 — Deferred coverage
 
 - [ ] **Transit agency boards** (deferred Nov 22, 2026): the DART Board and its committees, the Trinity Metro Board, the DCTA Board, and NCTCOG's Surface Transportation Technical Committee.
