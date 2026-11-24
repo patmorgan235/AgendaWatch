@@ -116,7 +116,9 @@ def _process(doc: Document, store: Store, http: Http, terms, settings: dict, run
         return
 
     try:
-        pages, note = extract_pages(data, ctype, ocr=str(settings.get("ocr", "auto")))
+        pages, note = extract_pages(data, ctype, ocr=str(settings.get("ocr", "auto")),
+                                    ocr_timeout=int(settings.get("ocr_timeout_seconds") or 900),
+                                    ocr_max_pages=int(settings.get("ocr_max_pages") or 0))
     except Exception as exc:  # noqa: BLE001 - a corrupt or mislabeled file shouldn't stop the run
         # Saved as an error, so the next run downloads and tries it again.
         st.failed += 1
@@ -219,9 +221,10 @@ def _apply_health(statuses: list[SourceStatus], health: dict, today: date, defau
 
 
 def select_sources(specs: list[dict], only: list[str] | None) -> list[dict]:
-    """The source specs named in `only` (all of them when it's empty); unknown names are an error."""
+    """The source specs named in `only`; unknown names are an error. Without `only`, every source
+    except those marked `archive: true`, which run only when named (archive backfills)."""
     if not only:
-        return specs
+        return [s for s in specs if not s.get("archive")]
     names = {s["name"] for s in specs}
     missing = [n for n in only if n not in names]
     if missing:

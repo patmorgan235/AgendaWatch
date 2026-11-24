@@ -571,7 +571,7 @@ class SwagitSource(Source):
 
     host: str = ""                   # e.g. "irvingtx" for irvingtx.new.swagit.com
     view: int = 0                    # archive number (shared across all Swagit sites)
-    tab: str = ""                    # optional tab, e.g. "meetings"
+    tab: str | list[str] = ""        # optional tab(s), e.g. "meetings" or [city-council, planning-and-zoning]
     include: str | None = None       # keep only meetings whose title matches (regex)
     exclude: str | None = None       # skip meetings whose title matches (regex)
     until: str | None = None         # only meetings before this date (YYYY-MM-DD)
@@ -581,11 +581,15 @@ class SwagitSource(Source):
     def _base(self) -> str:
         return f"https://{self.host}.new.swagit.com"
 
-    def _archive(self) -> str:
-        return f"{self._base()}/views/{self.view}" + (f"/{self.tab}" if self.tab else "")
+    def _tabs(self) -> list[str]:
+        return [self.tab] if isinstance(self.tab, str) else list(self.tab or [])
+
+    def _archive(self, tab: str = "") -> str:
+        return f"{self._base()}/views/{self.view}" + (f"/{tab}" if tab else "")
 
     def _default_page(self) -> str:
-        return self._archive()
+        tabs = [t for t in self._tabs() if t]
+        return self._archive(tabs[0] if tabs else "")
 
     _VIDEO = re.compile(r'href="/videos/(\d+)"[^>]*>([^<]+)</a>', re.I)
     _DATE = re.compile(r"\b([A-Z][a-z]{2,8}\.? \d{1,2}, \d{4})\b")
@@ -609,13 +613,21 @@ class SwagitSource(Source):
     def list_documents(self, start: date, end: date) -> list[Document]:
         if not self.host or not self.view:
             raise SourceError("Swagit source needs host and view")
-        until = date.fromisoformat(self.until) if self.until else None
+        until = self.until if isinstance(self.until, date) else date.fromisoformat(self.until) if self.until else None
         inc = re.compile(self.include, re.I) if self.include else None
         exc = re.compile(self.exclude, re.I) if self.exclude else None
         docs: dict[str, Document] = {}
         seen_rows = 0
+        for tab in self._tabs() or [""]:
+            seen_rows += self._read_tab(tab, start, end, until, inc, exc, docs)
+        if not seen_rows:
+            raise SourceError("No Swagit meeting rows found on the archive page")
+        return list(docs.values())
+
+    def _read_tab(self, tab, start, end, until, inc, exc, docs) -> int:
+        seen_rows = 0
         for page in range(1, self.max_pages + 1):
-            url = self._archive() + (f"?page={page}" if page > 1 else "")
+            url = self._archive(tab) + (f"?page={page}" if page > 1 else "")
             html = self.http.get_text(url)
             rows = self._rows(html)
             if not rows:
@@ -634,9 +646,7 @@ class SwagitSource(Source):
                 break
             if page == 1 and "page=2" not in html:
                 break                    # a single-page archive
-        if not seen_rows:
-            raise SourceError("No Swagit meeting rows found on the archive page")
-        return list(docs.values())
+        return seen_rows
 
 
 # ---------------------------------------------------------------- CivicWeb
@@ -798,6 +808,7 @@ def build_sources(specs: list[dict], http: Http) -> list[Source]:
         note = str(spec.pop("note", "") or "")
         stale = spec.pop("stale_after_days", None)
         agenda_page = str(spec.pop("agenda_page", "") or "")
+        spec.pop("archive", None)        # used by the runner to pick sources; not a source setting
         user_agent = spec.pop("user_agent", None)
         if user_agent:
             hosts = {urlparse(u).netloc for u in spec.get("urls", []) + [spec.get("base_url") or ""]}

@@ -87,8 +87,8 @@ def test_partial_document_write_is_rolled_back(tmp_path, monkeypatch):
     cfg = config(tmp_path)
     real = runner.extract_pages
 
-    def extract(data, ctype, ocr="auto"):
-        pages, note = real(data, ctype, ocr=ocr)
+    def extract(data, ctype, ocr="auto", **kw):
+        pages, note = real(data, ctype, ocr=ocr, **kw)
         if any("Dallas Area Rapid Transit" in p for p in pages):
             pages = pages + ["lone surrogate " + chr(0xD800)]   # sqlite can't encode this
         return pages, note
@@ -264,3 +264,21 @@ def test_unasked_304_is_an_error(http_with):
     http, _ = http_with(FakeResponse(304))
     with pytest.raises(FetchError):
         http.fetch("https://x/a.pdf")
+
+
+def test_ocr_limits(monkeypatch):
+    import subprocess
+
+    from agendawatch import extract
+
+    blank = make_pdf(["", "", ""])          # three pages, no text: looks scanned
+    monkeypatch.setattr(extract.shutil, "which", lambda name: "/usr/bin/ocrmypdf")
+    pages, note = extract.extract_pages(blank, "application/pdf", ocr_max_pages=2)
+    assert "longer than the OCR limit (2)" in note and len(pages) == 3
+
+    def slow(*a, **kw):
+        raise subprocess.TimeoutExpired(cmd="ocrmypdf", timeout=kw["timeout"])
+    monkeypatch.setattr(extract.subprocess, "run", slow)
+    pages, note = extract.extract_pages(blank, "application/pdf", ocr_timeout=5)
+    assert note == "scanned PDF; OCR ran out of time (5 s)"
+    assert "install ocrmypdf" not in note     # so later runs don't keep retrying it

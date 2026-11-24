@@ -266,9 +266,12 @@ Goal: five years of transit items, browsable on the site. Most cities post meeti
 - [x] `--only` partial runs for backfills (save the database, don't publish); archive matches aren't news.
 - [x] GMP false positives found by the pilot: spacing-insensitive exclusions, `require_nearby`.
 - [x] Hosted runs keep all agenda text (`page_retention_days` 0), so new terms re-check the archive.
-- [ ] Richardson and Irving backfill to Jan 2021 on Azure (started Nov 23).
+- [x] Richardson and Irving backfilled to Jan 2021 on Azure (Nov 23: 657 of 659 agendas, 359 archive matches, 53 min).
 - [x] **Archive view** on the site: one JSON file per year, loaded on demand; filters work; city cards link to it.
-- [ ] Find Swagit archive numbers (`/views/N`) for the other cities (about 29, including Grand Prairie and Allen, not covered today), then backfill each with `--only`.
+- [x] Swagit archive numbers found for 24 cities (`https://<host>.swagit.com/` redirects to `/views/N`). None usable: Grapevine (empty), McKinney, Lancaster, Duncanville, Frisco, Hurst, Allen.
+- [x] `archive: true` sources (only run when named), tabs as a list, OCR limits for backfills (`ocr_max_pages`, `ocr_timeout_seconds`).
+- [x] Grand Prairie added as a daily source from Swagit (not covered before; agendas around meeting day).
+- [ ] Backfill the 21 archive sources and Grand Prairie to Nov 2021 (8,031 agendas) in 3 Azure batches.
 - [ ] Backfill the cities' own systems where they reach back (Legistar, CivicClerk, CivicWeb, Granicus, Docs Published), where Swagit is missing or lacks packets.
 - [ ] Full-text search over the archive (Phase 7).
 

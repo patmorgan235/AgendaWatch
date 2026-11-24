@@ -44,8 +44,13 @@ def _pdf_pages(data: bytes) -> list[str]:
     return pages
 
 
-def _ocr(data: bytes) -> list[str] | None:
-    """OCR a scanned PDF with ocrmypdf if it's installed; otherwise return None."""
+class OcrFailed(Exception):
+    pass
+
+
+def _ocr(data: bytes, timeout: int = 900) -> list[str] | None:
+    """OCR a scanned PDF with ocrmypdf if it's installed; None if it isn't. Raises OcrFailed if it
+    is installed but fails or runs out of time."""
     if not shutil.which("ocrmypdf"):
         return None
     with tempfile.TemporaryDirectory() as tmp:
@@ -54,11 +59,14 @@ def _ocr(data: bytes) -> list[str] | None:
         try:
             subprocess.run(
                 ["ocrmypdf", "--skip-text", "--quiet", str(src), str(dst)],
-                check=True, timeout=900, capture_output=True,
+                check=True, timeout=timeout, capture_output=True,
             )
+        except subprocess.TimeoutExpired as exc:
+            log.warning("OCR failed: %s", exc)
+            raise OcrFailed(f"OCR ran out of time ({timeout} s)") from exc
         except (subprocess.SubprocessError, OSError) as exc:
             log.warning("OCR failed: %s", exc)
-            return None
+            raise OcrFailed("OCR failed") from exc
         return _pdf_pages(dst.read_bytes())
 
 
@@ -106,8 +114,10 @@ def looks_scanned(pages: list[str]) -> bool:
     return chars < 40 * len(pages)
 
 
-def extract_pages(data: bytes, content_type: str = "", ocr: str = "auto") -> tuple[list[str], str]:
-    """Return (pages, note). Note explains anything unusual, e.g. a scanned PDF."""
+def extract_pages(data: bytes, content_type: str = "", ocr: str = "auto", ocr_timeout: int = 900,
+                  ocr_max_pages: int = 0) -> tuple[list[str], str]:
+    """Return (pages, note). Note explains anything unusual, e.g. a scanned PDF.
+    `ocr_max_pages` (0 = no limit) skips OCR on long scans, e.g. to keep archive backfills moving."""
     head = data[:1024].removeprefix(b"\xef\xbb\xbf").lstrip().lower()   # skip a UTF-8 BOM
     looks_html = head.startswith((b"<!doctype", b"<html", b"<head", b"<?xml", b"<!--")) or b"<body" in head
     # Trust the bytes, never the Content-Type: some sites answer a PDF link with an HTML error or
@@ -116,7 +126,12 @@ def extract_pages(data: bytes, content_type: str = "", ocr: str = "auto") -> tup
         pages = _pdf_pages(data)
         if looks_scanned(pages):
             if ocr != "off":
-                ocr_pages = _ocr(data)
+                if ocr_max_pages and len(pages) > ocr_max_pages:
+                    return pages, f"scanned PDF of {len(pages)} pages, longer than the OCR limit ({ocr_max_pages})"
+                try:
+                    ocr_pages = _ocr(data, ocr_timeout)
+                except OcrFailed as exc:
+                    return pages, f"scanned PDF; {exc}"
                 if ocr_pages is not None:
                     return ocr_pages, "scanned PDF, text read with OCR"
             return pages, "looks like a scanned PDF with little text (install ocrmypdf to read it)"
