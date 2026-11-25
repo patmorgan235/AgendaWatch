@@ -258,7 +258,7 @@ Re-matching the hosted database with the new list: 232 mentions across 25 terms;
 
 **Done when:** a word not on the term list can be found in the current window's agendas, and the filters above work together and survive a shared link.
 
-### Phase 7a — Multi-year archive (in progress)
+### Phase 7a — Multi-year archive (backfill done; more sources to come)
 
 Goal: five years of transit items, browsable on the site. Most cities post meeting videos to Swagit with the agenda attached, going back to about 2009, on a public file server (no bot blocking).
 
@@ -271,7 +271,17 @@ Goal: five years of transit items, browsable on the site. Most cities post meeti
 - [x] Swagit archive numbers found for 24 cities (`https://<host>.swagit.com/` redirects to `/views/N`). None usable: Grapevine (empty), McKinney, Lancaster, Duncanville, Frisco, Hurst, Allen.
 - [x] `archive: true` sources (only run when named), tabs as a list, OCR limits for backfills (`ocr_max_pages`, `ocr_timeout_seconds`).
 - [x] Grand Prairie added as a daily source from Swagit (not covered before; agendas around meeting day).
-- [ ] Backfill the 21 archive sources and Grand Prairie to Nov 2021 (8,031 agendas) in 3 Azure batches.
+- [x] Backfilled the 21 archive sources and Grand Prairie to Nov 2021 in 3 Azure batches (Nov 24): 7,788 of 7,838 agendas read, 0 counted as news; the database is 213.6 MB.
+  - Batch A, Dallas and Garland: 2,554 of 2,554 (68 min).
+  - Batch B, Denton, Collin County, Grand Prairie, Rowlett, Plano and DeSoto: 2,698 of 2,700 (89 min).
+  - Batch C, the other 14 cities: 2,536 of 2,584 (73 min).
+  - A retry run recovered Irving's 2 failed agendas.
+  - Still missing:
+    - 43 Euless agendas from 2021–23, which link to `services.eulesstx.gov` pages since removed (404). Left as is.
+    - One agenda each from Denton (2023-09-11) and Benbrook. Their Swagit links fail every time; the rest of each site loads.
+    - Two Lewisville agendas from March 2024 and one Plano agenda from 2022, whose links 404.
+    - One Celina agenda of 300 MB, over the size limit.
+  - Carrollton's Swagit view holds only 38 agendas.
 - [ ] Backfill the cities' own systems where they reach back (Legistar, CivicClerk, CivicWeb, Granicus, Docs Published), where Swagit is missing or lacks packets.
 - [ ] Full-text search over the archive (Phase 7).
 
