@@ -442,6 +442,15 @@ sources:
     skip_undated: true
     max_links: 60
     section: Eligible to join a transit agency
+  - name: Corinth
+    type: link_page       # CivicPlus Agenda Center (moved from cityofcorinth.com, which no longer answers)
+    urls:
+      - https://www.corinthtx.gov/AgendaCenter
+    link_pattern: '/AgendaCenter/ViewFile/Agenda/_\d{8}-\d+(\?packet=true)?$'   # agenda + packet, not the HTML copy
+    exclude_pattern: 'cancel+(ed|ation)'
+    skip_undated: true
+    max_links: 60
+    section: Eligible to join a transit agency
   - name: Cedar Hill
     type: link_page       # destinyhosted eAgenda (same software as Collin County); eligible for DART
     urls:
@@ -539,7 +548,7 @@ sources:
 
   # Not read (see README): Grand Prairie, The Colony, Burleson, Prosper (Municode Meetings
   # refuses the tool / Cloudflare challenge); Allen, Saginaw (AgendaLink API needs an embedded
-  # token); Arlington (agenda list loads by script); Rockwall, Corinth (site unreachable).
+  # token); Arlington (agenda list loads by script); Rockwall (site unreachable).
 
   # ------------------------------------------------------------ Grand Prairie (Swagit)
   # Grand Prairie's agenda site (Municode Meetings) blocks automated requests. Its Swagit archive

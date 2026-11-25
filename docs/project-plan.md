@@ -39,7 +39,7 @@ A searchable history of past agenda items is useful but secondary.
 | Transit agency boards not watched | DART, Trinity Metro and DCTA boards, plus NCTCOG's Surface Transportation Technical Committee (STTC), which vets items before the RTC. |
 | Blocked sources | Irving, Tarrant County, Grand Prairie, The Colony, Burleson, Prosper, Allen and Saginaw sit behind Cloudflare challenges, Municode Meetings, or token-only AgendaLink APIs. |
 | Blocked from the cloud only | Richardson's cor.net (Swagit fallback gives shorter notice) and Hurst (no fallback) return 403 to Azure addresses; see the hybrid fetch in the backlog. |
-| Unresolved sources | Arlington (its agenda list is loaded by script), Rockwall and Corinth (sites unreachable). |
+| Unresolved sources | Arlington (its agenda list is loaded by script) and Rockwall (site unreachable). Corinth moved to corinthtx.gov and is read again. |
 | Titles only | Fort Worth, Dallas County's HTML agenda, and Dallas Legistar with attachments off give item titles but not staff reports. |
 | ~~Report hides earlier finds~~ | Fixed in Phase 1: the page shows every match for meetings in the window. |
 | Limited push delivery | The RSS/Atom and calendar feeds exist (Phase 1), but there are no email or Slack alerts for new matches (Later). |
@@ -288,7 +288,7 @@ Goal: five years of transit items, browsable on the site. Most cities post meeti
 ### Phase 8 — Deferred coverage
 
 - [ ] **Transit agency boards** (deferred Nov 22, 2026): the DART Board and its committees, the Trinity Metro Board, the DCTA Board, and NCTCOG's Surface Transportation Technical Committee.
-- [ ] Revisit the remaining blocked and unresolved sources: Arlington, Rockwall, Corinth, Tarrant County, and the Municode Meetings and AgendaLink cities. The hybrid fetch from Phase 6 may cover some of them.
+- [ ] Revisit the remaining blocked and unresolved sources: Arlington, Rockwall, Tarrant County, and the Municode Meetings and AgendaLink cities. The hybrid fetch from Phase 6 may cover some of them.
 - [ ] Read deeper where possible: Legistar attachments for key bodies (Dallas stays on agenda PDFs only for now, by choice), and Fort Worth staff reports if a sanctioned way to read them appears.
 
 ### Later
