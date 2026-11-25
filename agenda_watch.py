@@ -50,6 +50,10 @@ def cmd_run(args, cfg) -> int:
 
     path = write_report(res, terms, cfg["settings"]["report_dir"], cfg["settings"].get("site_url"),
                         taxonomy_from_config(cfg))
+    if cfg["settings"].get("search_index", True):
+        from agendawatch.search import sections_from_config, write_search_index
+
+        write_search_index(cfg["settings"]["database"], cfg["settings"]["report_dir"], sections_from_config(cfg))
     print()
     print(text_summary(res))
     print(f"\nReport: {path}")

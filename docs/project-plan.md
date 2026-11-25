@@ -245,7 +245,7 @@ Re-matching the hosted database with the new list: 232 mentions across 25 terms;
 
 ### Phase 7 — Search and filtering
 
-- [ ] **Full-text search** of agenda text, not just snippets. Publish a compact search index of the text of meetings in the report window, and search it in the browser, so terms that aren't on the watch list can be found ("bus stop on Belt Line").
+- [x] **Full-text search** of agenda text, not just snippets: a Pagefind index of every stored page (the report window and the 5-year archive), published with the site and searched in the browser (the **Full text** view). One record per PDF page, so results link to the page; filters for section, city and year; best match or newest first; in the shareable URL. Pagefind's content-hashed files are uploaded only when new, and files the new build no longer has are deleted.
 - [ ] **Filters:**
   - multi-select for cities and sections;
   - tags and action type (from Phase 5);
@@ -283,7 +283,7 @@ Goal: five years of transit items, browsable on the site. Most cities post meeti
     - One Celina agenda of 300 MB, over the size limit.
   - Carrollton's Swagit view holds only 38 agendas.
 - [ ] Backfill the cities' own systems where they reach back (Legistar, CivicClerk, CivicWeb, Granicus, Docs Published), where Swagit is missing or lacks packets.
-- [ ] Full-text search over the archive (Phase 7).
+- [x] Full-text search over the archive (Phase 7).
 
 ### Phase 8 — Deferred coverage
 

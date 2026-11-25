@@ -142,6 +142,8 @@ The **Cities** view lists every city, county and agency being watched, by sectio
 
 The **Archive** view holds meetings older than the report window, one year at a time (`archive/<year>.json`, loaded when a year is opened). The same filters work there, except "Upcoming" and "New". Each city's card in the Cities view links to its archive.
 
+The **Full text** view searches every page of every stored agenda, not only the passages that mention a watched term, so you can find a street, a project or a contractor ("Belt Line", "car wash"). Results are pages, grouped by meeting, each linking to that page of the PDF; filter by section, city and year, and sort by best match or newest first. The search index is built by [Pagefind](https://pagefind.app) each run (`pagefind/`, one small file per page plus word-index chunks) and the browser downloads only the pieces a search needs. It works on the hosted site, not when `index.html` is opened from disk. Set `search_index: false` to skip it; without the `pagefind` package it's skipped with a warning.
+
 Each meeting shows how many days away it is, which terms and tags it mentions, the matching passages with a link to the right page of the PDF, and links to the agenda, packet and meeting page, plus "Add to calendar" (Google or `.ics`).
 
 **Sources** at the bottom (or `index.html#sources`) is the health check:
