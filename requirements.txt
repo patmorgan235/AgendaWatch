@@ -3,4 +3,5 @@ beautifulsoup4>=4.12
 pypdf>=4.0
 PyYAML>=6.0
 httpx[http2]>=0.27  # Richardson (cor.net) only accepts HTTP/2
+pagefind[bin]>=1.5.2,<2   # full-text search index (the binary ships in the wheel)
 # Optional, for scanned PDFs: install ocrmypdf (and Tesseract) separately, e.g. `brew install ocrmypdf`

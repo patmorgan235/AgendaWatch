@@ -16,7 +16,8 @@ settings:
   stale_after_days: 30       # flag a source with no new agenda for this long (0 = off); per-source override too
   lead_window_days: 180      # lead time ("notice") is measured over meetings first seen in this window
   page_retention_days: 0     # drop stored page text for meetings older than this (0 = keep all;
-                             # matches are always kept). Hosted runs set 90 to keep the database small.
+                             # matches are always kept). Full-text search covers only pages still kept.
+  search_index: true         # build the full-text search index (needs the pagefind package)
 
 # ------------------------------------------------------------------ key terms
 # Plain phrases match whole words, ignore case, and tolerate line breaks inside the phrase.

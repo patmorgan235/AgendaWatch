@@ -8,6 +8,10 @@ Three backends, chosen with AGENDAWATCH_STORAGE:
           AZURE_STORAGE_CONNECTION_STRING when set.
   s3      Any S3-compatible store (AWS S3, Cloudflare R2, Backblaze B2, MinIO).
 
+Publishing uploads every site file except the search index's content-hashed files that are
+already there (a few hundred thousand of them, nearly all unchanged from day to day), then deletes
+the search index files the new build no longer has.
+
 Every backend also provides a run lock, so two runs never work on the database at once. A lock
 older than lock_ttl_hours is treated as left behind by a crashed run and taken over.
 
@@ -20,6 +24,7 @@ import logging
 import mimetypes
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -36,6 +41,11 @@ CONTENT_TYPES = {
 }
 SHORT_CACHE = "public, max-age=300"          # pages and feeds that change every run
 LONG_CACHE = "public, max-age=86400"         # dated snapshots never change
+IMMUTABLE_CACHE = "public, max-age=31536000, immutable"   # content-hashed search index files
+SEARCH_DIR = "pagefind"
+# Pagefind names these by a hash of their content, so a file already published never changes.
+_HASHED = (f"{SEARCH_DIR}/fragment/", f"{SEARCH_DIR}/index/", f"{SEARCH_DIR}/filter/")
+UPLOAD_WORKERS = 16
 
 
 class LockHeld(RuntimeError):
@@ -46,8 +56,16 @@ def content_type(path: Path) -> str:
     return CONTENT_TYPES.get(path.suffix.lower()) or mimetypes.guess_type(path.name)[0] or "application/octet-stream"
 
 
-def cache_control(path: Path) -> str:
-    return LONG_CACHE if path.name.startswith("agenda-report-") else SHORT_CACHE
+def is_hashed(name: str) -> bool:
+    """A search index file whose name is a hash of its content (safe to skip if already published)."""
+    return name.startswith(_HASHED) or (name.startswith(f"{SEARCH_DIR}/") and name.endswith(".pf_meta"))
+
+
+def cache_control(path: Path | str) -> str:
+    name = Path(path).as_posix()
+    if is_hashed(name):
+        return IMMUTABLE_CACHE
+    return LONG_CACHE if Path(name).name.startswith("agenda-report-") else SHORT_CACHE
 
 
 def site_files(site_dir: Path) -> list[Path]:
@@ -77,8 +95,36 @@ class Storage:
         raise NotImplementedError
 
     # site -------------------------------------------------------------------
-    def publish_site(self, site_dir: Path) -> int:  # pragma: no cover - interface
-        """Upload every file under site_dir. Returns how many were uploaded."""
+    def publish_site(self, site_dir: Path) -> int:
+        """Upload the files under site_dir, skipping search index files already published, then delete
+        search index files the new build doesn't have. Returns how many files were uploaded."""
+        site_dir = Path(site_dir)
+        files = {f.relative_to(site_dir).as_posix(): f for f in site_files(site_dir)}
+        # Only touch the published index when this build made one; a run that couldn't build it
+        # leaves yesterday's in place.
+        has_index = f"{SEARCH_DIR}/pagefind-entry.json" in files
+        published = self._list_site(f"{SEARCH_DIR}/") if has_index else set()
+        todo = [(name, f) for name, f in files.items() if not (is_hashed(name) and name in published)]
+        with ThreadPoolExecutor(UPLOAD_WORKERS) as pool:
+            list(pool.map(lambda nf: self._put_site(nf[0], nf[1]), todo))
+        stale = sorted(published - files.keys())
+        with ThreadPoolExecutor(UPLOAD_WORKERS) as pool:
+            list(pool.map(self._delete_site, stale))
+        if has_index:
+            log.info("search index: %d file(s) uploaded, %d already published, %d removed",
+                     sum(1 for n, _ in todo if n.startswith(f"{SEARCH_DIR}/")),
+                     sum(1 for n in files if n.startswith(f"{SEARCH_DIR}/")) -
+                     sum(1 for n, _ in todo if n.startswith(f"{SEARCH_DIR}/")), len(stale))
+        return len(todo)
+
+    def _list_site(self, prefix: str) -> set[str]:  # pragma: no cover - interface
+        """Names of the published site files under prefix."""
+        raise NotImplementedError
+
+    def _put_site(self, name: str, src: Path) -> None:  # pragma: no cover - interface
+        raise NotImplementedError
+
+    def _delete_site(self, name: str) -> None:  # pragma: no cover - interface
         raise NotImplementedError
 
     # lock -------------------------------------------------------------------
@@ -123,14 +169,17 @@ class LocalStorage(Storage):
         tmp.write_bytes(Path(src).read_bytes())
         tmp.replace(self.state / key)
 
-    def publish_site(self, site_dir):
-        n = 0
-        for f in site_files(site_dir):
-            dest = self.site / f.relative_to(site_dir)
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_bytes(f.read_bytes())
-            n += 1
-        return n
+    def _list_site(self, prefix):
+        base = self.site / prefix
+        return {p.relative_to(self.site).as_posix() for p in base.rglob("*") if p.is_file()} if base.exists() else set()
+
+    def _put_site(self, name, src):
+        dest = self.site / name
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(Path(src).read_bytes())
+
+    def _delete_site(self, name):
+        (self.site / name).unlink(missing_ok=True)
 
     def _acquire(self):
         self.state.mkdir(parents=True, exist_ok=True)
@@ -194,18 +243,24 @@ class AzureBlobStorage(Storage):
         with open(src, "rb") as fh:
             self.state.get_blob_client(key).upload_blob(fh, overwrite=True, max_concurrency=4)
 
-    def publish_site(self, site_dir):
+    def _list_site(self, prefix):
+        return set(self.site.list_blob_names(name_starts_with=prefix))
+
+    def _put_site(self, name, src):
         from azure.storage.blob import ContentSettings
 
-        n = 0
-        for f in site_files(site_dir):
-            name = f.relative_to(site_dir).as_posix()
-            with open(f, "rb") as fh:
-                self.site.get_blob_client(name).upload_blob(
-                    fh, overwrite=True,
-                    content_settings=ContentSettings(content_type=content_type(f), cache_control=cache_control(f)))
-            n += 1
-        return n
+        with open(src, "rb") as fh:
+            self.site.get_blob_client(name).upload_blob(
+                fh, overwrite=True,
+                content_settings=ContentSettings(content_type=content_type(Path(src)), cache_control=cache_control(name)))
+
+    def _delete_site(self, name):
+        from azure.core.exceptions import ResourceNotFoundError
+
+        try:
+            self.site.delete_blob(name)
+        except ResourceNotFoundError:
+            pass
 
     def _acquire(self):
         from azure.core.exceptions import HttpResponseError, ResourceExistsError
@@ -267,14 +322,18 @@ class S3Storage(Storage):
     def put_state(self, key, src):
         self.s3.upload_file(str(src), self.state_bucket, self.state_prefix + key)
 
-    def publish_site(self, site_dir):
-        n = 0
-        for f in site_files(site_dir):
-            key = self.site_prefix + f.relative_to(site_dir).as_posix()
-            self.s3.upload_file(str(f), self.site_bucket, key,
-                                ExtraArgs={"ContentType": content_type(f), "CacheControl": cache_control(f)})
-            n += 1
-        return n
+    def _list_site(self, prefix):
+        names = set()
+        for pg in self.s3.get_paginator("list_objects_v2").paginate(Bucket=self.site_bucket, Prefix=self.site_prefix + prefix):
+            names.update(o["Key"][len(self.site_prefix):] for o in pg.get("Contents", []))
+        return names
+
+    def _put_site(self, name, src):
+        self.s3.upload_file(str(src), self.site_bucket, self.site_prefix + name,
+                            ExtraArgs={"ContentType": content_type(Path(src)), "CacheControl": cache_control(name)})
+
+    def _delete_site(self, name):
+        self.s3.delete_object(Bucket=self.site_bucket, Key=self.site_prefix + name)
 
     def _acquire(self):
         key = self.state_prefix + self.LOCK_KEY

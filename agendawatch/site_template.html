@@ -38,6 +38,13 @@ header p{margin:0;color:var(--muted)}
 .activechip span{margin-left:4px;font-weight:700}
 .controls.cities .quick,.controls.cities .filterbtn,.controls.cities .panel,.controls.cities .active{display:none}
 .controls.archive #f-upcoming-label,.controls.archive #f-new-wrap{display:none}
+.controls.search .quick,.controls.search #f-tags,.controls.search #f-terms-wrap{display:none}
+.ftbar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin:18px 0 6px;font-size:.9rem}
+.ftbar select{font:inherit;font-size:.9rem;padding:4px 8px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
+.ftdoc .pages{list-style:none;margin:0;padding:0}
+.ftdoc .pages li{border-top:1px solid var(--line);padding:8px 0 2px}
+.ftdoc .pages li:first-child{border-top:0}
+.ftbusy{opacity:.55}
 .years{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:18px 0 4px}
 .years .termbtn small{color:var(--muted);font-weight:400;margin-left:4px}
 .citygrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,270px),1fr));gap:12px}
@@ -139,6 +146,7 @@ footer p{margin:4px 0}
       <button type="button" class="termbtn" id="v-cal" aria-pressed="false">Calendar</button>
       <button type="button" class="termbtn" id="v-cities" aria-pressed="false">Cities</button>
       <button type="button" class="termbtn" id="v-archive" aria-pressed="false">Archive</button>
+      <button type="button" class="termbtn" id="v-search" aria-pressed="false" title="Search the full text of every stored agenda">Full text</button>
     </div>
     <button type="button" class="filterbtn" id="f-toggle" aria-expanded="false" aria-controls="f-panel">Filters<span class="count" id="f-count" hidden></span></button>
   </div>
@@ -306,10 +314,10 @@ footer p{margin:4px 0}
     }
     if (fSec.value) chip(fSec.value, function () { fSec.value = ""; });
     if (fCity.value) chip(fCity.value, function () { fCity.value = ""; });
-    Object.keys(activeTags).filter(function (k) { return activeTags[k]; }).forEach(function (k) {
+    if (view !== "search") Object.keys(activeTags).filter(function (k) { return activeTags[k]; }).forEach(function (k) {
       chip(k.split(":").slice(1).join(":"), function () { activeTags[k] = false; setPressed(fTags, "data-tag", k, false); });
     });
-    Object.keys(activeTerms).filter(function (k) { return activeTerms[k]; }).forEach(function (k) {
+    if (view !== "search") Object.keys(activeTerms).filter(function (k) { return activeTerms[k]; }).forEach(function (k) {
       chip("“" + k + "”", function () { activeTerms[k] = false; setPressed(fTerms, null, k, false); });
     });
     fCount.hidden = !chips.length;
@@ -336,6 +344,7 @@ footer p{margin:4px 0}
   var VIEW_KEY = "agendawatch.view";
   var vList = document.getElementById("v-list"), vCal = document.getElementById("v-cal"),
       vCities = document.getElementById("v-cities"), vArchive = document.getElementById("v-archive"),
+      vSearch = document.getElementById("v-search"),
       fUpLabel = document.getElementById("f-upcoming-label");
   var view = "list";            // "list" | "calendar"
   var calMonth = firstOfMonth(localToday());
@@ -347,29 +356,36 @@ footer p{margin:4px 0}
   var maxMonth = firstOfMonth(new Date(Math.max(parseDay(DATA.window.end), localToday())));
   function clampMonth(d) { return d < minMonth ? minMonth : d > maxMonth ? maxMonth : d; }
   function setView(v) {
-    view = v === "calendar" || v === "cities" || v === "archive" ? v : "list";
+    view = v === "calendar" || v === "cities" || v === "archive" || v === "search" ? v : "list";
     vList.setAttribute("aria-pressed", view === "list" ? "true" : "false");
     vCal.setAttribute("aria-pressed", view === "calendar" ? "true" : "false");
     vCities.setAttribute("aria-pressed", view === "cities" ? "true" : "false");
     vArchive.setAttribute("aria-pressed", view === "archive" ? "true" : "false");
+    vSearch.setAttribute("aria-pressed", view === "search" ? "true" : "false");
+    // Full text: the search box queries every stored agenda page; only section and city filters apply.
+    document.querySelector(".controls").classList.toggle("search", view === "search");
     document.querySelector(".controls").classList.toggle("archive", view === "archive");
     // In the Cities view only the search box applies (it filters the cities).
     document.querySelector(".controls").classList.toggle("cities", view === "cities");
-    fQ.placeholder = view === "cities" ? "Search cities and agencies…" : "Search snippets, cities, meetings…";
+    fQ.placeholder = view === "cities" ? "Search cities and agencies…"
+      : view === "search" ? "Search the full text of every agenda…" : "Search snippets, cities, meetings…";
   }
   vList.addEventListener("click", function () { setView("list"); pref(VIEW_KEY, "list"); update(); });
   vCal.addEventListener("click", function () { setView("calendar"); pref(VIEW_KEY, "calendar"); update(); });
   vCities.addEventListener("click", function () { setView("cities"); pref(VIEW_KEY, "cities"); update(); });
   vArchive.addEventListener("click", function () { setView("archive"); update(); });   // not remembered: it loads files
+  vSearch.addEventListener("click", function () { setView("search"); update(); fQ.focus(); });
   var ARCHIVE = DATA.archive || { years: [], cities: {} };
   if (!ARCHIVE.years.length) vArchive.hidden = true;
   var archYear = "", archCache = {}, archLoading = "", archError = "";
   function meetingsNow() {
+    if (view === "search") return DATA.sources;   // every city has searchable agendas, mentions or not
     return view === "archive" ? ((archCache[archYear] || {}).meetings || []) : DATA.meetings;
   }
 
   DATA.sections.forEach(function (s) {
-    if (DATA.meetings.some(function (m) { return m.section === s; })) fSec.appendChild(el("option", { value: s, text: s }));
+    if (DATA.meetings.some(function (m) { return m.section === s; }) || DATA.sources.some(function (x) { return x.section === s; }))
+      fSec.appendChild(el("option", { value: s, text: s }));
   });
   function fillCities() {
     var keep = fCity.value, seen = {};
@@ -413,7 +429,8 @@ footer p{margin:4px 0}
   function readQuery() {
     var q = new URLSearchParams(location.search);
     setView(q.get("view") || pref(VIEW_KEY) || "list");
-    if (/^\d{4}$/.test(q.get("year") || "")) archYear = q.get("year");
+    if (/^\d{4}$/.test(q.get("year") || "")) { archYear = q.get("year"); ft.year = archYear; }
+    if (q.get("sort") === "new") ft.sort = "new";
     if (/^\d{4}-\d{2}-\d{2}$/.test(q.get("day") || "")) {
       calDay = q.get("day");
       calMonth = firstOfMonth(parseDay(calDay));
@@ -443,21 +460,24 @@ footer p{margin:4px 0}
     var q = new URLSearchParams();
     if (view === "cities") q.set("view", "cities");
     if (view === "archive") { q.set("view", "archive"); if (archYear) q.set("year", archYear); }
+    if (view === "search") { q.set("view", "search"); if (ft.year) q.set("year", ft.year); if (ft.sort) q.set("sort", ft.sort); }
     if (view === "calendar") {
       q.set("view", "calendar");
       q.set("month", isoOf(calMonth).slice(0, 7));
       if (calDay) q.set("day", calDay);
     }
-    if (!fUp.checked) q.set("upcoming", "0");
-    if (fNew.checked) q.set("new", "1");
+    if (!fUp.checked && view !== "search") q.set("upcoming", "0");
+    if (fNew.checked && view !== "search") q.set("new", "1");
     if (fSec.value) q.set("section", fSec.value);
     if (fCity.value) q.set("city", fCity.value);
     if (fQ.value) q.set("q", fQ.value);
     var t = Object.keys(activeTerms).filter(function (k) { return activeTerms[k]; });
-    if (t.length) q.set("terms", t.join(","));
     var tg = Object.keys(activeTags).filter(function (k) { return activeTags[k]; });
-    if (tg.length) q.set("tags", tg.join(","));
-    if (fAct.checked) q.set("actions", "1");
+    if (view !== "search") {
+      if (t.length) q.set("terms", t.join(","));
+      if (tg.length) q.set("tags", tg.join(","));
+      if (fAct.checked) q.set("actions", "1");
+    }
     var s = q.toString();
     try { history.replaceState(null, "", (s ? "?" + s : location.pathname) + location.hash); } catch (e) { /* file:// in some browsers */ }
   }
@@ -558,11 +578,12 @@ footer p{margin:4px 0}
     fUp.disabled = cal;
     fUpLabel.classList.toggle("off", cal);
     fUpLabel.title = cal ? "The calendar shows past and upcoming meetings: use the month arrows" : "";
-    var items = filtered(cal);
+    var items = view === "search" ? [] : filtered(cal);   // full text has its own results
     var root = document.getElementById("results");
     root.textContent = "";
     if (view === "cities") renderCities(root);
     else if (view === "archive") renderArchive(root);
+    else if (view === "search") renderSearch(root);
     else if (cal) renderCalendar(root, items);
     else renderList(root, items);
     renderFeeds();
@@ -771,6 +792,135 @@ footer p{margin:4px 0}
     window.scrollTo(0, 0);
   }
   var pendingCity = "";
+  // ---- full text: Pagefind index of every stored agenda page, loaded on first use ----
+  var ft = { year: "", sort: "", key: "", doneKey: "", results: [], items: [], busy: false, filters: null,
+             error: "", lib: null, loading: false, timer: 0 };
+  var FT_PAGE = 20;
+  function loadSearch() {
+    if (ft.lib || ft.loading || ft.error) return;
+    ft.loading = true;
+    import("./pagefind/pagefind.js").then(function (pf) {
+      return Promise.resolve(pf.options({ excerptLength: 32 })).then(function () { return pf.init(); })
+        .then(function () { return pf.filters(); })
+        .then(function (f) { ft.filters = f || {}; ft.lib = pf; });
+    }).catch(function () {
+      ft.error = location.protocol === "file:"
+        ? "Full-text search works on the website; open the hosted page to use it."
+        : "Full-text search isn’t available right now. Try again later.";
+    }).then(function () { ft.loading = false; if (view === "search") update(); });
+  }
+  function ftKey() { return [fQ.value.trim(), fSec.value, fCity.value, ft.year, ft.sort].join("\u0001"); }
+  function runSearch() {
+    var key = ft.key, q = fQ.value.trim(), filters = {};
+    if (fSec.value) filters.section = fSec.value;
+    if (fCity.value) filters.city = fCity.value;
+    if (ft.year) filters.year = ft.year;
+    var opts = { filters: filters };
+    if (ft.sort === "new") opts.sort = { date: "desc" };
+    ft.busy = true;
+    ft.lib.search(q, opts).then(function (r) {
+      if (key !== ft.key) return;                  // a newer search has started
+      ft.results = (r && r.results) || []; ft.items = []; ft.doneKey = key;
+      return moreResults(key);
+    }).catch(function () {
+      if (key === ft.key) { ft.results = []; ft.items = []; ft.doneKey = key; }
+    }).then(function () { if (key === ft.key) { ft.busy = false; if (view === "search") update(); } });
+  }
+  function moreResults(key) {
+    var next = ft.results.slice(ft.items.length, ft.items.length + FT_PAGE);
+    return Promise.all(next.map(function (r) { return r.data(); })).then(function (d) {
+      if (key === ft.key) ft.items = ft.items.concat(d);
+    });
+  }
+  // Pagefind's excerpt is HTML with <mark> around matches; keep only the text and the marks.
+  function excerptNodes(html) {
+    var doc = new DOMParser().parseFromString("<p>" + html + "</p>", "text/html");
+    var out = [];
+    Array.prototype.forEach.call(doc.body.firstChild ? doc.body.firstChild.childNodes : [], function (n) {
+      if (n.nodeName === "MARK") out.push(el("mark", { text: n.textContent }));
+      else out.push(document.createTextNode(n.textContent));
+    });
+    return out;
+  }
+  function ftGroups(items) {
+    // consecutive pages of one agenda go under one heading
+    var groups = [], byDoc = {};
+    items.forEach(function (d) {
+      var doc = d.url.split("#")[0], g = byDoc[doc];
+      if (!g) { g = byDoc[doc] = { doc: doc, meta: d.meta, pages: [] }; groups.push(g); }
+      g.pages.push(d);
+    });
+    return groups;
+  }
+  function renderSearch(root) {
+    var bar = el("div", { class: "ftbar" });
+    var years = Object.keys((ft.filters && ft.filters.year) || {}).filter(Boolean).sort().reverse();
+    var ySel = el("select", { "aria-label": "Year" }, [el("option", { value: "", text: "Any year" })].concat(
+      years.map(function (y) { return el("option", { value: y, text: y }); })));
+    ySel.value = ft.year;
+    ySel.addEventListener("change", function () { ft.year = ySel.value; update(); });
+    var sSel = el("select", { "aria-label": "Sort" }, [el("option", { value: "", text: "Best match" }),
+      el("option", { value: "new", text: "Newest first" })]);
+    sSel.value = ft.sort;
+    sSel.addEventListener("change", function () { ft.sort = sSel.value; update(); });
+    bar.appendChild(el("label", null, ["Year ", ySel]));
+    bar.appendChild(el("label", null, ["Sort ", sSel]));
+    root.appendChild(bar);
+    var summary = document.getElementById("summary");
+    if (!ft.lib) {
+      loadSearch();
+      summary.textContent = "";
+      root.appendChild(el("div", { class: "empty", text: ft.error || "Loading search…" }));
+      return;
+    }
+    var q = fQ.value.trim();
+    if (!q) {
+      summary.textContent = "";
+      root.appendChild(el("div", { class: "empty", text: "Search every page of every stored agenda, including words that aren’t on the " +
+        "watch list: a street, a project, a contractor. Results link to the page of the agenda where the words appear." }));
+      return;
+    }
+    var key = ftKey();
+    if (key !== ft.key) {
+      ft.key = key;
+      clearTimeout(ft.timer);
+      ft.timer = setTimeout(runSearch, 250);
+    }
+    var fresh = ft.doneKey === key;
+    summary.textContent = !fresh ? "Searching…" : plural(ft.results.length, "page") + " match" +
+      (ft.results.length === 1 ? "es" : "");
+    if (fresh && !ft.results.length) {
+      root.appendChild(el("div", { class: "empty", text: "No agenda pages match “" + q + "”" +
+        (fSec.value || fCity.value || ft.year ? " with these filters." : ".") }));
+      return;
+    }
+    var list = el("div", { class: fresh ? "" : "ftbusy" });
+    ftGroups(ft.items).forEach(function (g) {
+      var m = g.meta || {};
+      var head = el("h3", null, [el("a", { href: g.doc, target: "_blank", rel: "noopener noreferrer",
+        text: (m.city ? m.city + " — " : "") + (m.title || "Agenda") })]);
+      var meta = el("p", { class: "meta" }, [el("span", { class: "when", text: m.date ? fmtDay(m.date) : "Date unknown" }),
+        el("span", { text: m.section || "" }), el("span", { text: m.kind && m.kind !== "agenda" ? m.kind : "" })]);
+      var pages = el("ul", { class: "pages" });
+      g.pages.forEach(function (d) {
+        var pm = d.meta || {};
+        var label = pm.page ? "p. " + pm.page + (pm.pages ? " of " + pm.pages : "") : "Open";
+        pages.appendChild(el("li", null, [el("a", { class: "page", href: d.url, target: "_blank", rel: "noopener noreferrer", text: label }),
+          el("p", { class: "snip" }, excerptNodes(d.excerpt || ""))]));
+      });
+      list.appendChild(el("article", { class: "meeting ftdoc" }, [head, meta, pages]));
+    });
+    root.appendChild(list);
+    if (fresh && ft.items.length < ft.results.length) {
+      var more = el("button", { type: "button", class: "more", text: "Show more (" + (ft.results.length - ft.items.length) + " more pages)" });
+      more.addEventListener("click", function () {
+        more.disabled = true;
+        var k = ft.key;
+        moreResults(k).then(function () { if (k === ft.key && view === "search") update(); });
+      });
+      root.appendChild(more);
+    }
+  }
   function renderList(root, items) {
     var nHits = countHits(items);
     document.getElementById("summary").textContent = plural(items.length, "meeting") + " · " + plural(nHits, "mention");

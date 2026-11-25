@@ -18,6 +18,7 @@ from pathlib import Path
 import yaml
 
 from .report import text_summary, write_report
+from .search import sections_from_config, write_search_index
 from .site import taxonomy_from_config
 from .runner import run
 from .storage import LockHeld, Storage
@@ -99,7 +100,10 @@ def run_job(cfg: dict, storage: Storage, today: date | None = None, http=None,
                 write_report(res, terms, site, settings.get("site_url"), taxonomy_from_config(cfg))
                 # Save the database before publishing: if publishing fails, the next run republishes;
                 # if saving failed after publishing, the next run would report the same items as new again.
+                # (And before the search index, the slowest step, so a crash there loses nothing.)
                 storage.put_state(DB_KEY, db)
+                if settings.get("search_index", True):
+                    write_search_index(db, site, sections_from_config(cfg))
                 n = storage.publish_site(site)
             if not only:
                 log.info("published %d site file(s); database %.1f MB", n, db.stat().st_size / 1e6,
