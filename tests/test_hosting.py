@@ -113,7 +113,11 @@ class FakeBlob:
         self.exists, self.leased, self.metadata = False, False, {}
 
     def upload_blob(self, data, overwrite=False, **kw):
-        from azure.core.exceptions import ResourceExistsError
+        from azure.core.exceptions import HttpResponseError as AzureHttpError, ResourceExistsError
+        if self.exists and self.leased:          # what Azure answers for a leased blob, lease ID or not
+            err = AzureHttpError(message="There is currently a lease on the blob and no lease ID was specified")
+            err.status_code, err.error_code = 412, "LeaseIdMissing"
+            raise err
         if self.exists and not overwrite:
             raise ResourceExistsError("exists")
         self.exists = True
