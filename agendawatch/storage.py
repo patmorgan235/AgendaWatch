@@ -236,7 +236,7 @@ class AzureBlobStorage(Storage):
 
     def __init__(self, account_url: str | None = None, connection_string: str | None = None,
                  state_container: str = "state", site_container: str = "$web",
-                 client_id: str | None = None, service=None, **kw):
+                 client_id: str | None = None, service=None, lease_client=None, **kw):
         super().__init__(**kw)
         if service is None:
             from azure.storage.blob import BlobServiceClient
@@ -251,6 +251,11 @@ class AzureBlobStorage(Storage):
                 cred = DefaultAzureCredential(managed_identity_client_id=client_id) if client_id else DefaultAzureCredential()
                 service = BlobServiceClient(account_url, credential=cred)
         self.service = service
+        # Breaking someone else's lease goes through a BlobLeaseClient (the BlobClient has no
+        # break_lease); tests pass a stand-in.
+        if lease_client is None:
+            from azure.storage.blob import BlobLeaseClient as lease_client
+        self._lease_client = lease_client
         self.state = service.get_container_client(state_container)
         self.site = service.get_container_client(site_container)
 
@@ -319,7 +324,7 @@ class AzureBlobStorage(Storage):
             if age < self.lock_ttl:
                 raise LockHeld(f"run lock is held (since {age / 60:.0f} min ago)") from None
             log.warning("taking over a stale run lock (%.1f h old)", age / 3600)
-            blob.break_lease(lease_break_period=0)
+            self._lease_client(blob).break_lease(lease_break_period=0)
             lease = blob.acquire_lease(lease_duration=-1)
         blob.set_blob_metadata({"acquired": _stamp()}, lease=lease)
         return lease

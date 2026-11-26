@@ -131,14 +131,21 @@ class FakeBlob:
         self.leased = True
         return FakeLease(self)
 
-    def break_lease(self, lease_break_period=0):
-        self.leased = False
 
     def get_blob_properties(self):
         return type("P", (), {"metadata": self.metadata})()
 
     def set_blob_metadata(self, metadata, lease=None):
         self.metadata = metadata
+
+
+class FakeLeaseClient:
+    """Stands in for azure.storage.blob.BlobLeaseClient(blob), which is where break_lease lives."""
+    def __init__(self, blob):
+        self.blob = blob
+
+    def break_lease(self, lease_break_period=0):
+        self.blob.leased = False
 
 
 class FakeContainer:
@@ -159,7 +166,7 @@ class FakeService:
 
 def test_azure_lease_lock():
     svc = FakeService()
-    st = AzureBlobStorage(service=svc, lock_ttl_hours=1)
+    st = AzureBlobStorage(service=svc, lock_ttl_hours=1, lease_client=FakeLeaseClient)
     blob = svc.containers["state"].blobs.get("run.lock") or svc.get_container_client("state").get_blob_client("run.lock")
     with st.lock():
         assert blob.leased and "acquired" in blob.metadata
