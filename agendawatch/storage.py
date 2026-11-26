@@ -9,8 +9,9 @@ Three backends, chosen with AGENDAWATCH_STORAGE:
   s3      Any S3-compatible store (AWS S3, Cloudflare R2, Backblaze B2, MinIO).
 
 Publishing uploads every site file except the search index's content-hashed files that are
-already there (a few hundred thousand of them, nearly all unchanged from day to day), then deletes
-the search index files the new build no longer has.
+already there. The index is one bundle per year (pagefind/<year>/); pagefind/manifest.json says
+which years this run rebuilt. Only those years' old files are deleted, and years the manifest no
+longer lists; a year that wasn't rebuilt keeps its published bundle untouched.
 
 Every backend also provides a run lock, so two runs never work on the database at once. A lock
 older than lock_ttl_hours is treated as left behind by a crashed run and taken over.
@@ -20,8 +21,10 @@ The Azure and S3 SDKs are imported only when that backend is used.
 
 from __future__ import annotations
 
+import json
 import logging
 import mimetypes
+import re
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -43,8 +46,9 @@ SHORT_CACHE = "public, max-age=300"          # pages and feeds that change every
 LONG_CACHE = "public, max-age=86400"         # dated snapshots never change
 IMMUTABLE_CACHE = "public, max-age=31536000, immutable"   # content-hashed search index files
 SEARCH_DIR = "pagefind"
+SEARCH_MANIFEST = f"{SEARCH_DIR}/manifest.json"
 # Pagefind names these by a hash of their content, so a file already published never changes.
-_HASHED = (f"{SEARCH_DIR}/fragment/", f"{SEARCH_DIR}/index/", f"{SEARCH_DIR}/filter/")
+_HASHED = re.compile(rf"^{SEARCH_DIR}/(?:[^/]+/)?(?:(?:fragment|index|filter)/|pagefind\.[^/]+\.pf_meta$)")
 UPLOAD_WORKERS = 16
 
 
@@ -58,7 +62,7 @@ def content_type(path: Path) -> str:
 
 def is_hashed(name: str) -> bool:
     """A search index file whose name is a hash of its content (safe to skip if already published)."""
-    return name.startswith(_HASHED) or (name.startswith(f"{SEARCH_DIR}/") and name.endswith(".pf_meta"))
+    return bool(_HASHED.match(name))
 
 
 def cache_control(path: Path | str) -> str:
@@ -96,26 +100,44 @@ class Storage:
 
     # site -------------------------------------------------------------------
     def publish_site(self, site_dir: Path) -> int:
-        """Upload the files under site_dir, skipping search index files already published, then delete
-        search index files the new build doesn't have. Returns how many files were uploaded."""
+        """Upload the files under site_dir (search index files already published are skipped; the
+        manifest goes last), then delete the old files of the search years rebuilt this run and of
+        years no longer listed. Returns how many files were uploaded."""
         site_dir = Path(site_dir)
         files = {f.relative_to(site_dir).as_posix(): f for f in site_files(site_dir)}
-        # Only touch the published index when this build made one; a run that couldn't build it
-        # leaves yesterday's in place.
-        has_index = f"{SEARCH_DIR}/pagefind-entry.json" in files
-        published = self._list_site(f"{SEARCH_DIR}/") if has_index else set()
-        todo = [(name, f) for name, f in files.items() if not (is_hashed(name) and name in published)]
+        manifest = files.get(SEARCH_MANIFEST)
+        # Only touch the published index when this run wrote a manifest; a run that couldn't build
+        # one leaves the published index as it is.
+        if manifest:
+            m = json.loads(manifest.read_text(encoding="utf-8"))
+            built, listed = set(m.get("built", [])), set(m.get("years", {}))
+            published = self._list_site(f"{SEARCH_DIR}/")
+        else:
+            built, listed, published = set(), set(), set()
+        todo = [(n, f) for n, f in files.items() if n != SEARCH_MANIFEST and not (is_hashed(n) and n in published)]
         with ThreadPoolExecutor(UPLOAD_WORKERS) as pool:
             list(pool.map(lambda nf: self._put_site(nf[0], nf[1]), todo))
-        stale = sorted(published - files.keys())
+        if manifest:                  # after the bundles it points to are in place
+            self._put_site(SEARCH_MANIFEST, manifest)
+
+        def bundle(name: str) -> str | None:
+            parts = name.split("/")
+            return parts[1] if len(parts) > 2 else None
+
+        stale = sorted(n for n in published - files.keys()
+                       if n != SEARCH_MANIFEST and (bundle(n) in built or bundle(n) not in listed))
         with ThreadPoolExecutor(UPLOAD_WORKERS) as pool:
             list(pool.map(self._delete_site, stale))
-        if has_index:
-            log.info("search index: %d file(s) uploaded, %d already published, %d removed",
-                     sum(1 for n, _ in todo if n.startswith(f"{SEARCH_DIR}/")),
-                     sum(1 for n in files if n.startswith(f"{SEARCH_DIR}/")) -
-                     sum(1 for n, _ in todo if n.startswith(f"{SEARCH_DIR}/")), len(stale))
-        return len(todo)
+        if manifest:
+            up = sum(1 for n, _ in todo if n.startswith(f"{SEARCH_DIR}/"))
+            log.info("search index: %d file(s) uploaded, %d already published, %d removed; rebuilt: %s",
+                     up, sum(1 for n in files if n.startswith(f"{SEARCH_DIR}/")) - 1 - up, len(stale),
+                     ", ".join(sorted(built)) or "none")
+        return len(todo) + (1 if manifest else 0)
+
+    def get_site_file(self, name: str) -> bytes | None:  # pragma: no cover - interface
+        """A published site file's content, or None if it isn't there."""
+        raise NotImplementedError
 
     def _list_site(self, prefix: str) -> set[str]:  # pragma: no cover - interface
         """Names of the published site files under prefix."""
@@ -168,6 +190,10 @@ class LocalStorage(Storage):
         tmp = self.state / f".{key}.uploading"
         tmp.write_bytes(Path(src).read_bytes())
         tmp.replace(self.state / key)
+
+    def get_site_file(self, name):
+        f = self.site / name
+        return f.read_bytes() if f.is_file() else None
 
     def _list_site(self, prefix):
         base = self.site / prefix
@@ -242,6 +268,14 @@ class AzureBlobStorage(Storage):
     def put_state(self, key, src):
         with open(src, "rb") as fh:
             self.state.get_blob_client(key).upload_blob(fh, overwrite=True, max_concurrency=4)
+
+    def get_site_file(self, name):
+        from azure.core.exceptions import ResourceNotFoundError
+
+        try:
+            return self.site.get_blob_client(name).download_blob().readall()
+        except ResourceNotFoundError:
+            return None
 
     def _list_site(self, prefix):
         return set(self.site.list_blob_names(name_starts_with=prefix))
@@ -321,6 +355,14 @@ class S3Storage(Storage):
 
     def put_state(self, key, src):
         self.s3.upload_file(str(src), self.state_bucket, self.state_prefix + key)
+
+    def get_site_file(self, name):
+        try:
+            return self.s3.get_object(Bucket=self.site_bucket, Key=self.site_prefix + name)["Body"].read()
+        except Exception as exc:  # noqa: BLE001
+            if self._missing(exc):
+                return None
+            raise
 
     def _list_site(self, prefix):
         names = set()

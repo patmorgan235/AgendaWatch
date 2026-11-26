@@ -799,8 +799,21 @@ footer p{margin:4px 0}
   function loadSearch() {
     if (ft.lib || ft.loading || ft.error) return;
     ft.loading = true;
-    import("./pagefind/pagefind.js").then(function (pf) {
-      return Promise.resolve(pf.options({ excerptLength: 32 })).then(function () { return pf.init(); })
+    // One Pagefind bundle per year (pagefind/<year>/), listed in the manifest: load the newest and
+    // merge the rest, so one search covers every year.
+    var manifest;
+    fetch("pagefind/manifest.json", { cache: "no-cache" }).then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    }).then(function (m) {
+      manifest = m;
+      if (!m.primary) throw new Error("no search index");
+      return import("./pagefind/" + m.primary + "/pagefind.js");
+    }).then(function (pf) {
+      return Promise.resolve(pf.options({ excerptLength: 32 })).then(function () {
+        return Promise.all(Object.keys(manifest.years).filter(function (y) { return y !== manifest.primary; })
+          .map(function (y) { return pf.mergeIndex(new URL("pagefind/" + y + "/", location.href).href); }));
+      }).then(function () { return pf.init(); })
         .then(function () { return pf.filters(); })
         .then(function (f) { ft.filters = f || {}; ft.lib = pf; });
     }).catch(function () {
@@ -846,7 +859,7 @@ footer p{margin:4px 0}
     // consecutive pages of one agenda go under one heading
     var groups = [], byDoc = {};
     items.forEach(function (d) {
-      var doc = d.url.split("#")[0], g = byDoc[doc];
+      var link = (d.meta && d.meta.link) || d.url, doc = link.split("#")[0], g = byDoc[doc];
       if (!g) { g = byDoc[doc] = { doc: doc, meta: d.meta, pages: [] }; groups.push(g); }
       g.pages.push(d);
     });
@@ -905,7 +918,7 @@ footer p{margin:4px 0}
       g.pages.forEach(function (d) {
         var pm = d.meta || {};
         var label = pm.page ? "p. " + pm.page + (pm.pages ? " of " + pm.pages : "") : "Open";
-        pages.appendChild(el("li", null, [el("a", { class: "page", href: d.url, target: "_blank", rel: "noopener noreferrer", text: label }),
+        pages.appendChild(el("li", null, [el("a", { class: "page", href: pm.link || d.url, target: "_blank", rel: "noopener noreferrer", text: label }),
           el("p", { class: "snip" }, excerptNodes(d.excerpt || ""))]));
       });
       list.appendChild(el("article", { class: "meeting ftdoc" }, [head, meta, pages]));

@@ -53,7 +53,8 @@ def cmd_run(args, cfg) -> int:
     if cfg["settings"].get("search_index", True):
         from agendawatch.search import sections_from_config, write_search_index
 
-        write_search_index(cfg["settings"]["database"], cfg["settings"]["report_dir"], sections_from_config(cfg))
+        write_search_index(cfg["settings"]["database"], cfg["settings"]["report_dir"], sections_from_config(cfg),
+                           timeout=float(cfg["settings"].get("search_timeout_seconds", 1200)))
     print()
     print(text_summary(res))
     print(f"\nReport: {path}")

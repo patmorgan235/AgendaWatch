@@ -18,6 +18,7 @@ settings:
   page_retention_days: 0     # drop stored page text for meetings older than this (0 = keep all;
                              # matches are always kept). Full-text search covers only pages still kept.
   search_index: true         # build the full-text search index (needs the pagefind package)
+  search_timeout_seconds: 1200   # per year of the search index; a year that runs over keeps its last build
 
 # ------------------------------------------------------------------ key terms
 # Plain phrases match whole words, ignore case, and tolerate line breaks inside the phrase.
