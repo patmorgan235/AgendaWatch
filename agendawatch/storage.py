@@ -304,6 +304,11 @@ class AzureBlobStorage(Storage):
             blob.upload_blob(b"", overwrite=False)
         except ResourceExistsError:
             pass  # the lock blob exists from an earlier run; the lease is what matters
+        except HttpResponseError as exc:
+            # A leased blob answers "lease ID missing" (412) rather than "exists": it exists, and
+            # whether that lease is stale is decided below.
+            if getattr(exc, "error_code", None) != "LeaseIdMissing" and getattr(exc, "status_code", None) != 412:
+                raise
         try:
             lease = blob.acquire_lease(lease_duration=-1)
         except HttpResponseError as exc:
