@@ -245,7 +245,7 @@ Re-matching the hosted database with the new list: 232 mentions across 25 terms;
 
 ### Phase 7 — Search and filtering
 
-- [x] **Full-text search** of agenda text, not just snippets: a Pagefind index of every stored page (the report window and the 5-year archive), published with the site and searched in the browser (the **Full text** view). One record per PDF page, so results link to the page; filters for section, city and year; best match or newest first; in the shareable URL. Pagefind's content-hashed files are uploaded only when new, and files the new build no longer has are deleted.
+- [x] **Full-text search** of agenda text, not just snippets: a Pagefind index of every stored page (the report window and the 5-year archive), published with the site and searched in the browser (the **Full text** view). One record per PDF page, so results link to the page; filters for section, city and year; best match or newest first; in the shareable URL. Pagefind's content-hashed files are uploaded only when new, and files the new build no longer has are deleted. Built in batches, one bundle per year, by the Pagefind CLI (Nov 26: the first version, through Pagefind's Python API, handled about 10 pages a second and the Nov 25–26 runs hit the 4-hour limit without publishing); unchanged years aren't rebuilt, and each year has a time limit.
 - [ ] **Filters:**
   - multi-select for cities and sections;
   - tags and action type (from Phase 5);

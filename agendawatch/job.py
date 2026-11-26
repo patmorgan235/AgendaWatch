@@ -18,10 +18,10 @@ from pathlib import Path
 import yaml
 
 from .report import text_summary, write_report
-from .search import sections_from_config, write_search_index
+from .search import read_manifest, sections_from_config, write_search_index
 from .site import taxonomy_from_config
 from .runner import run
-from .storage import LockHeld, Storage
+from .storage import SEARCH_MANIFEST, LockHeld, Storage
 from .store import Store
 
 log = logging.getLogger("agendawatch.job")
@@ -103,7 +103,14 @@ def run_job(cfg: dict, storage: Storage, today: date | None = None, http=None,
                 # (And before the search index, the slowest step, so a crash there loses nothing.)
                 storage.put_state(DB_KEY, db)
                 if settings.get("search_index", True):
-                    write_search_index(db, site, sections_from_config(cfg))
+                    # Years unchanged since the published index aren't rebuilt (see search.py).
+                    try:
+                        previous = read_manifest(storage.get_site_file(SEARCH_MANIFEST))
+                    except Exception as exc:  # noqa: BLE001 - then every year is rebuilt
+                        log.warning("couldn't read the published search manifest: %s", exc)
+                        previous = read_manifest(None)
+                    write_search_index(db, site, sections_from_config(cfg), previous,
+                                       timeout=float(settings.get("search_timeout_seconds", 1200)))
                 n = storage.publish_site(site)
             if not only:
                 log.info("published %d site file(s); database %.1f MB", n, db.stat().st_size / 1e6,
