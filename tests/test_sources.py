@@ -412,3 +412,71 @@ def test_agenda_page_links_for_people():
     assert pages["E"] == "https://x.example/list"                 # skips the templated URL
     assert pages["F"].startswith("https://x.example/agendas-20")   # fills in the year
     assert pages["G"] == "https://plano.gov/agendas"              # config override wins
+
+
+# Carrollton's Meeting Postings page: one <h5> per meeting, a few holding several meetings split by
+# <br>, some without a year, quorum "Posting"s for social events, and canceled meetings.
+CARROLLTON_POSTINGS = """<html><body>
+<h2>2026</h2>
+<h5>City Council to Attend Culture Fest - September 26 - <a href="/home/showpublisheddocument/41861/1">Posting</a></h5>
+<h5>Legislative Committee Meeting - October 12 - <a href="/home/showpublisheddocument/41795/1">Agenda</a>&nbsp;</h5>
+<p><span style="font-weight:bold">DART Committee - November 20, 2026 - <a href="/home/showpublisheddocument/41900/1">Agenda</a></span></p>
+<h2><span>CANCELED DART Committee - November 16, 2026 - (Canceled&nbsp;</span><a href="/home/showpublisheddocument/41899/1">Agenda</a>)</h2>
+<h5>
+DART Committee - December 8, 2026 - <a href="/home/showpublisheddocument/41950/1">Agenda</a><br>
+<br>
+Re-Development Committee - December 2, 2026 - <a href="/home/showpublisheddocument/41940/1">Agenda&nbsp;<br></a><a href="/home/showpublisheddocument/41941/1"><br></a>DART Committee - November 17, 2026 - <a href="/home/showpublisheddocument/41930/1">Agenda&nbsp;</a></h5>
+</body></html>"""
+
+
+def test_link_page_line_context_and_yearless_dates():
+    url = "https://www.cityofcarrollton.com/government/city-manager-s-office/meeting-postings"
+    src = LinkPageSource(name="Carrollton (committees)", city="Carrollton", http=FakeHttp({url: CARROLLTON_POSTINGS}),
+                         urls=[url], link_pattern=r"/showpublisheddocument/\d+", link_text_pattern=r"^(updated\s+)?agenda\b",
+                         link_context="line", yearless_dates=True, exclude_pattern=r"cancel+(ed|ation)", skip_undated=True)
+    got = {d.url.split("/")[-2]: (d.meeting_date, d.body) for d in src.list_documents(START, END)}
+    assert got == {
+        "41795": (date(2026, 10, 12), "Legislative Committee Meeting"),
+        "41900": (date(2026, 11, 20), "DART Committee"),
+        "41950": (date(2026, 12, 8), "DART Committee"),
+        "41940": (date(2026, 12, 2), "Re-Development Committee"),
+        "41930": (date(2026, 11, 17), "DART Committee"),
+    }
+
+
+TOD_PAGE = """<html><head><title>TOD Committee | City of Carrollton, TX</title></head><body>
+<!--stopindex--><nav><a href="/tod">Transit-Oriented Development</a> <a href="/news">News - October 1, 2026</a></nav><!--startindex-->
+<div class="content_area"><p>NOTICE OF PUBLIC MEETING<br>TRANSIT-ORIENTED DEVELOPMENT COMMITTEE</p>
+<p>November 30, 2026<br>4:00 p.m.</p><p>I. Approve Minutes Of Meeting For The October 12, 2026, Committee.</p></div>
+<!--stopindex--><footer>Contact us</footer><!--startindex-->
+</body></html>"""
+
+
+def test_link_page_page_is_agenda():
+    url = "https://www.carrolltontxdevelopment.com/development/transit-oriented-development/tod-committee"
+    src = LinkPageSource(name="Carrollton TOD Committee", city="Carrollton", http=FakeHttp({url: TOD_PAGE}), urls=[url],
+                         page_is_agenda=True, meeting_name="Transit-Oriented Development Committee")
+    [doc] = src.list_documents(START, END)
+    assert doc.meeting_date == date(2026, 11, 30)          # the menu's news date is skipped
+    assert doc.url == url + "#2026-11-30"                  # one document per meeting on the reused page
+    assert doc.body == "Transit-Oriented Development Committee"
+    assert LinkPageSource(name="x", city="x", http=FakeHttp({url: "<html><body>No meeting posted</body></html>"}),
+                          urls=[url], page_is_agenda=True).list_documents(START, END) == []
+
+
+def test_html_text_skips_marked_site_chrome():
+    from agendawatch.extract import extract_pages
+    [text], note = extract_pages(TOD_PAGE.encode(), "text/html")
+    assert "TRANSIT-ORIENTED DEVELOPMENT COMMITTEE" in text and "Contact us" not in text
+    assert "Transit-Oriented Development" not in text.replace("TRANSIT-ORIENTED DEVELOPMENT", "")
+
+
+def test_parse_month_day_picks_the_recent_year():
+    from agendawatch.dates import parse_month_day
+    today = date(2026, 11, 26)
+    assert parse_month_day("Legislative Committee - October 12 - Agenda", today)[0] == date(2026, 10, 12)
+    assert parse_month_day("Gala - December 20", today)[0] == date(2026, 12, 20)       # a few weeks ahead
+    assert parse_month_day("Dinner - December 20", date(2027, 1, 10))[0] == date(2026, 12, 20)   # far ahead: last year
+    assert parse_month_day("Picnic - April 3", date(2027, 1, 10))[0] == date(2027, 4, 3)        # within 120 days
+    assert parse_month_day("Meeting - Oct 12, 2026", today)[0] is None                   # has a year: parse_date's job
+    assert parse_month_day("Coffee with Your Council", today)[0] is None

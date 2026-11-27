@@ -5,7 +5,8 @@ Each source returns Document objects; the runner downloads and searches them.
   legistar   Granicus Legistar (Dallas, Plano, Carrollton, Farmers Branch, University Park).
              Uses the public Legistar Web API; falls back to the website calendar.
   novus      NovusAGENDA (no city uses it now; Plano left it in July 2026).
-  link_page  Any page that links to agendas (Addison, Richardson's Swagit archive).
+  link_page  Any page that links to agendas (Addison, Richardson's Swagit archive), or a page that
+             is itself the agenda (Carrollton's TOD Committee).
   civicclerk CivicClerk (Rowlett, Garland). Uses the portal's public OData API.
   docspublished  Docs Published / DocAssembler (Fort Worth). Reads the public API's meeting
              list and each agenda's sections, items and attachment titles.
@@ -27,7 +28,8 @@ from urllib.parse import unquote, urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
-from .dates import parse_date
+from .dates import parse_date, parse_month_day
+from .extract import html_text
 from .http import FetchError, Http
 
 
@@ -257,6 +259,12 @@ class LinkPageSource(Source):
     url_rewrite: list[str] | None = None  # [regex, replacement] applied to each document link
     months_back: int = 1
     max_links: int = 60
+    link_context: str = "row"         # row = the link's table row / list item; line = just its own line
+                                      # (text back to the previous <br> or link), for pages that list
+                                      # several meetings in one heading or paragraph
+    yearless_dates: bool = False      # read "October 12" (no year) as its most recent occurrence
+    page_is_agenda: bool = False      # each page in `urls` is itself the agenda (posted in place and
+                                      # replaced for the next meeting), dated by the first date in it
     platform: str = "web page"
 
     def _default_page(self) -> str:
@@ -291,7 +299,10 @@ class LinkPageSource(Source):
             if href_re.search(href) and (not text_re or text_re.search(text)):
                 # Prefer the table row: a link in a row's dropdown list still belongs to that meeting.
                 row = a.find_parent("tr") or a.find_parent(["li", "article"]) or a.parent
-                context = row.get_text(" ", strip=True) if row else text
+                if self.link_context == "line":
+                    context = _line_text(a)
+                else:
+                    context = row.get_text(" ", strip=True) if row else text
                 cell = ""
                 if self.name_cell is not None and row is not None and row.name == "tr":
                     cells = row.find_all(["td", "th"], recursive=False)
@@ -302,7 +313,33 @@ class LinkPageSource(Source):
                 follow.append(href)
         return found, follow
 
+    def _pages_as_agendas(self, start: date, end: date) -> list[Document]:
+        docs, errors = [], []
+        for url in self._expand():
+            try:
+                html = self.http.get_text(url)
+            except FetchError as exc:
+                errors.append(str(exc))
+                continue
+            text = html_text(html)
+            mdate = parse_date(text)
+            if mdate is None:
+                self.notes.append("No meeting date on the page (no meeting posted?)")
+                continue
+            soup = BeautifulSoup(html, "html.parser")
+            title = soup.title.get_text(" ", strip=True).split("|")[0].strip() if soup.title else ""
+            body = self.meeting_name or title or "Meeting"
+            # The page is reused for every meeting: key each meeting's copy by its date.
+            href = f"{url.split('#')[0]}#{mdate.isoformat()}"
+            if _in_window(mdate, start, end) and _body_allowed(body, self.bodies):
+                docs.append(Document(self.name, self.city, body, mdate, f"{body} agenda", href, "agenda", url))
+        if errors and not docs:
+            raise SourceError("; ".join(dict.fromkeys(errors))[:300])
+        return docs
+
     def list_documents(self, start: date, end: date) -> list[Document]:
+        if self.page_is_agenda:
+            return self._pages_as_agendas(start, end)
         href_re = re.compile(self.link_pattern, re.I)
         text_re = re.compile(self.link_text_pattern, re.I) if self.link_text_pattern else None
         candidates: dict[str, str] = {}
@@ -343,6 +380,10 @@ class LinkPageSource(Source):
             if self.exclude_pattern and re.search(self.exclude_pattern, ctx, re.I):
                 continue
             mdate = parse_date(row_text) or parse_date(unquote(href))
+            if mdate is None and self.yearless_dates:
+                mdate, span = parse_month_day(row_text)
+                if mdate:   # put the year in, so the meeting name below drops the whole date
+                    row_text = f"{row_text[:span[0]]}{row_text[span[0]:span[1]]}, {mdate.year}{row_text[span[1]:]}"
             if mdate is None and self.skip_undated:
                 continue
             cell = ctx.split(" || ")[3] if ctx.count(" || ") >= 3 else ""
@@ -362,6 +403,29 @@ class LinkPageSource(Source):
             if _in_window(mdate, start, end) and _body_allowed(body, self.bodies):
                 docs.append(Document(self.name, self.city, body, mdate, f"{body} agenda", href, "agenda"))
         return docs
+
+
+_INLINE = {"span", "strong", "b", "em", "i", "u", "font", "small", "big", "mark"}
+
+
+def _line_text(a) -> str:
+    """The text on a link's own line: back from the link to the previous <br>, link or block
+    element, climbing out of inline wrappers (a <span> around both the label and the link)."""
+    parts = [a.get_text(" ", strip=True)]
+    node = a
+    while True:
+        prev, stopped = node.previous_sibling, False
+        while prev is not None:
+            name = getattr(prev, "name", None)
+            if name is not None and (name in ("br", "a") or name not in _INLINE):
+                stopped = True
+                break
+            parts.insert(0, prev.get_text(" ", strip=True) if name else str(prev))
+            prev = prev.previous_sibling
+        if stopped or node.parent is None or node.parent.name not in _INLINE:
+            break
+        node = node.parent
+    return re.sub(r"\s+", " ", " ".join(parts)).strip()
 
 
 # ---------------------------------------------------------------- CivicClerk

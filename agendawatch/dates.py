@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import date
+from datetime import date, timedelta
 
 _MONTHS = {
     m: i
@@ -65,3 +65,25 @@ def parse_date(text: str | None) -> date | None:
             except ValueError:
                 continue
     return None
+
+
+_MONTH_DAY = re.compile(r"\b([A-Za-z]{3,9})\.?\s+(\d{1,2})\b(?!\s*,?\s*\d{4})(?!\s*(?:st|nd|rd|th)?\s*\d)")
+
+
+def parse_month_day(text: str | None, today: date | None = None,
+                    ahead_days: int = 120) -> tuple[date | None, tuple[int, int]]:
+    """A date with no year ("October 12"), taken as its most recent occurrence: this year, or
+    last year if this year's falls more than `ahead_days` from now. Returns (date, match span)."""
+    today = today or date.today()
+    for m in _MONTH_DAY.finditer(text or ""):
+        month = _MONTHS.get(m.group(1).lower())
+        if not month:
+            continue
+        try:
+            d = date(today.year, month, int(m.group(2)))
+            if d > today + timedelta(days=ahead_days):
+                d = date(today.year - 1, month, int(m.group(2)))
+        except ValueError:
+            continue
+        return d, m.span()
+    return None, (0, 0)
