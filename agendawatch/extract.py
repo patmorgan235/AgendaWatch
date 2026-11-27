@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import logging
+import re
 import shutil
 import subprocess
 import tempfile
@@ -114,6 +115,21 @@ def looks_scanned(pages: list[str]) -> bool:
     return chars < 40 * len(pages)
 
 
+# Granicus Vision CMS sites (cityofcarrollton.com and others) wrap the site's menus, header and
+# footer in <!--stopindex--> ... <!--startindex--> so their own search skips them. Skip them too,
+# or a menu link such as "Transit-Oriented Development" would match on every page of the site.
+_STOPINDEX = re.compile(rb"<!--\s*stopindex\s*-->.*?<!--\s*startindex\s*-->", re.S | re.I)
+
+
+def html_text(data: bytes | str) -> str:
+    """The readable text of an HTML page, without scripts, styles or marked site chrome."""
+    raw = data.encode("utf-8") if isinstance(data, str) else data
+    soup = BeautifulSoup(_STOPINDEX.sub(b"", raw), "html.parser")
+    for tag in soup(["script", "style", "noscript"]):
+        tag.decompose()
+    return _normalize(soup.get_text("\n"))
+
+
 def extract_pages(data: bytes, content_type: str = "", ocr: str = "auto", ocr_timeout: int = 900,
                   ocr_max_pages: int = 0) -> tuple[list[str], str]:
     """Return (pages, note). Note explains anything unusual, e.g. a scanned PDF.
@@ -142,10 +158,7 @@ def extract_pages(data: bytes, content_type: str = "", ocr: str = "auto", ocr_ti
             return pages, "Word document"
         return [], "unreadable Word document"
     if "html" in content_type or looks_html:
-        soup = BeautifulSoup(data, "html.parser")
-        for tag in soup(["script", "style", "noscript"]):
-            tag.decompose()
-        return [_normalize(soup.get_text("\n"))], "HTML page"
+        return [html_text(data)], "HTML page"
     try:
         return [_normalize(data.decode("utf-8"))], "plain text"
     except UnicodeDecodeError:

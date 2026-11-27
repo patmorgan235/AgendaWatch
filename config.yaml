@@ -261,6 +261,38 @@ sources:
     type: legistar
     client: carrolltontx
 
+  - name: Carrollton (committees)
+    city: Carrollton
+    section: DART member cities
+    type: link_page
+    # City Manager's Office "Meeting Postings": council committee agendas (DART Committee,
+    # Redevelopment, Audit/Finance, ...) that aren't in Legistar. One line per meeting,
+    # "<Committee> - <Date> - Agenda"; the "Posting"s are quorum notices for social events.
+    urls:
+      - https://www.cityofcarrollton.com/government/city-manager-s-office/meeting-postings
+    user_agent: browser       # Akamai refuses non-browser clients, as on cor.net
+    link_pattern: '/showpublisheddocument/\d+'
+    link_text_pattern: '^(updated\s+)?agenda\b'
+    link_context: line        # some headings hold several meetings, split by <br>
+    yearless_dates: true      # recent lines read "October 12", without the year
+    exclude_pattern: 'cancel+(ed|ation)'
+    skip_undated: true
+    max_links: 200
+    stale_after_days: 120     # committees meet every month or two
+
+  - name: Carrollton TOD Committee
+    city: Carrollton
+    section: DART member cities
+    type: link_page
+    # The page is the agenda: posted in place for the next meeting and replaced afterward,
+    # so only the current one can be read.
+    urls:
+      - https://www.carrolltontxdevelopment.com/development/transit-oriented-development/tod-committee
+    user_agent: browser
+    page_is_agenda: true
+    meeting_name: Transit-Oriented Development Committee
+    stale_after_days: 120
+
   - name: University Park
     section: DART member cities
     type: legistar

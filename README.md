@@ -8,7 +8,7 @@ Checks North Texas agenda sites every day, searches each agenda for your key ter
 |---|---|---|
 | Dallas | Legistar (`cityofdallas`) | Legistar Web API, website calendar as fallback |
 | Farmers Branch | Legistar (`farmersbranch`) | same |
-| Carrollton | Legistar (`carrolltontx`) | same |
+| Carrollton | Legistar (`carrolltontx`), plus the city's Meeting Postings and TOD Committee pages | Legistar: City Council. Meeting Postings: committee agenda PDFs (DART Committee and others). TOD Committee: the page is the current agenda, read as posted. Both pages need a browser User-Agent |
 | University Park | Legistar (`uptexas`) | same |
 | Plano | Legistar (`plano`) | same (moved from NovusAGENDA in July 2026) |
 | Richardson | cor.net Council Meeting Documents, plus Swagit video archive | cor.net: agenda + packet PDFs ~6 days ahead (blocked from cloud hosting). Swagit: fallback that also covers boards and commissions, but lists meetings around meeting day |
