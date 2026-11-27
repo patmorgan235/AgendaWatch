@@ -8,7 +8,8 @@ settings:
   database: data/agenda_watch.db
   report_dir: reports       # the site (index.html, data.json, feed.xml, upcoming.ics) is written here
   # site_url: https://agendas.example.org   # where the site is hosted; makes feed links absolute
-  max_download_mb: 250       # skip agenda packets bigger than this (Dallas County PDFs run 100+ MB)
+  max_download_mb: 750       # skip agenda packets bigger than this (Dallas County PDFs run 100–500+ MB;
+                             # the file is held in memory while read, so keep well under the job's 4 GiB)
   request_delay_seconds: 1.0 # pause between requests to the same site
   ocr: auto                  # auto = OCR scanned PDFs if ocrmypdf is installed; off = never
   snippet_chars: 140         # context shown on each side of a match
